@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+{% load static markdown_tags %}
+{% block title %}{{ ticket.name }} · {{ project.name }} · Tokamak{% endblock %}
+{% block content %}
+<p class="crumbs">
+  <a href="/">Projects</a> /
+  <a href="/projects/{{ project.id }}/">{{ project.name }}</a> /
+  #{{ ticket.id }}
+</p>
+
+<div class="ticket-detail">
+  <h2>{{ ticket.name }}</h2>
+
+  <div class="meta">
+    <span class="chip type-{{ ticket.type }}">{{ ticket.get_type_display }}</span>
+    <span class="chip state">{{ ticket.get_state_display }}</span>
+    {% if ticket.iteration %}
+      <span class="chip">Iteration #{{ ticket.iteration.number }}{% if ticket.iteration.name %} · {{ ticket.iteration.name }}{% endif %}</span>
+    {% endif %}
+    <span class="chip">{{ ticket.story_points|default:"unestimated" }} pts</span>
+    {% if ticket.external_ref %}<span class="chip">{{ ticket.external_ref }}</span>{% endif %}
+    <span>#{{ ticket.id }}</span>
+    <span>created {{ ticket.created_at|date:"Y-m-d H:i" }}</span>
+    <span>updated {{ ticket.updated_at|date:"Y-m-d H:i" }}</span>
+  </div>
+
+  {% if error_param %}<p class="flash">{{ error_param }}</p>{% endif %}
+
+  <div class="blockers{% if ticket.is_blocked %} flagged{% endif %}">
+    <h3>⛓ Blockers</h3>
+    {% if blocking %}
+      <p class="blocked-note">This ticket is <strong>blocked</strong> — accept the blocking tickets or resolve them before delivering this one.</p>
+      <ul class="timeline">
+        {% for b in blocking %}
+          <li class="state">
+            <span class="e-kind">blocked by #{{ b.source.id }} · {{ b.source.name }} ({{ b.source.get_state_display }}){% if b.reason %} — {{ b.reason }}{% endif %}</span>
+            <form method="post" class="inline-form">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="remove_blocker">
+              <input type="hidden" name="by" value="{{ b.source.id }}">
+              <button type="submit" class="btn">✓ resolve blocker</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No blockers on this ticket.</p>
+    {% endif %}
+
+    {% if blocked_by_me %}
+      <h4>Blocked by this ticket</h4>
+      <ul class="timeline">
+        {% for t in blocked_by_me %}
+          <li><a href="/tickets/{{ t.id }}/">#{{ t.id }} {{ t.name }}</a></li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if candidate_blockers %}
+      <form method="post" class="inline-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_blocker">
+        <label>Flag as blocked by: <select name="by">
+            {% for t in candidate_blockers %}<option value="{{ t.id }}">#{{ t.id }} {{ t.name }}</option>{% endfor %}
+          </select></label>
+        <input type="text" name="reason" placeholder="reason (optional)">
+        <button type="submit">⛓ Add blocker</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="grouping">
+    <h3>◆ Epics &amp; milestones</h3>
+    <p class="meta">
+      {% if ticket.epic %}<span class="chip">◆ {{ ticket.epic.name }}</span>{% endif %}
+      {% if ticket.milestone %}<span class="chip milestone{% if ticket.milestone.is_complete %} complete{% endif %}">🏁 {{ ticket.milestone.name }}{% if ticket.milestone.due_date %} · due {{ ticket.milestone.due_date }}{% endif %}</span>{% endif %}
+    </p>
+    <form method="post" class="inline-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="set_epic">
+      <label>Epic: <input type="text" name="epic" list="epics-list" value="{% if ticket.epic %}{{ ticket.epic.name }}{% endif %}" placeholder="none or new"> (blank = detach)</label>
+      <datalist id="epics-list">
+        {% for e in epics %}<option value="{{ e.name }}">{% endfor %}
+      </datalist>
+      <button type="submit">Set epic</button>
+    </form>
+    <form method="post" class="inline-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="set_milestone">
+      <label>Milestone: <input type="text" name="milestone" list="ms-list" value="{% if ticket.milestone %}{{ ticket.milestone.name }}{% endif %}" placeholder="none or new"> (blank = detach)</label>
+      <datalist id="ms-list">
+        {% for m in milestones %}<option value="{{ m.name }}">{% endfor %}
+      </datalist>
+      <button type="submit">Set milestone</button>
+    </form>
+  </div>
+
+  <div class="desc rendered-md">
+    {% if ticket.description %}{{ ticket.description|md_render }}{% else %}<em>No description yet.</em>{% endif %}
+  </div>
+
+  {% if sessions %}
+    <h3>Memory sessions</h3>
+    <ul class="timeline">
+      {% for s in sessions %}
+        <li class="state">
+          <span class="e-kind">session · {{ s.get_status_display }}{% if s.mode %} · {{ s.mode }}{% endif %}</span>
+          {% if s.summary %}<div>{{ s.summary|truncatechars:200 }}</div>{% endif %}
+          {% if s.monitor_url %}<a href="{{ s.monitor_url }}" target="_blank" rel="noopener">monitor →</a>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <h3>Event timeline</h3>
+  {% if events %}
+    <ul class="timeline">
+      {% for e in events %}
+        <li class="{% if 'state' in e.name %}state{% elif 'estimated' in e.name %}estimated{% else %}created{% endif %}">
+          <span class="e-kind">{{ e.name }} · {{ e.created_at|date:"Y-m-d H:i" }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">No events recorded yet.</p>
+  {% endif %}
+
+  <div class="actions">
+    <a class="btn" href="/projects/{{ project.id }}/">← Back to board</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% load unicorn markdown_tags %}
+{# One linear board row in Tokamak stream style: points, name, state pill, actions. #}
+<article class="ticket state-{{ row.state }} type-{{ row.ticket.type }}{% if not row.ticket.is_estimated %} unestimated{% endif %}{% if row.above_line %} above-line{% endif %}{% if row.blocked %} blocked{% endif %}"
+         unicorn:key="t{{ row.ticket.id }}" data-ticket-id="{{ row.ticket.id }}"
+         data-state="{{ row.state }}" draggable="true">
+  <button class="points{% if not row.ticket.is_estimated %} nil{% endif %}"
+          title="story points">{{ row.ticket.story_points|default:'?' }}</button>
+
+  <div class="body">
+    <p class="name">
+      {% if row.blocked %}<span class="block-flag" title="blocked: {{ row.blocker_reasons|join:'; '|default:'resolve blockers first' }}">⛝ blocked</span>{% endif %}
+      <a class="name-link" href="/tickets/{{ row.ticket.id }}/">{{ row.ticket.name }}</a>
+      {% if row.ticket.epic %}<span class="badge epic-badge" title="epic grouping">◆ {{ row.ticket.epic.name }}</span>{% endif %}
+      {% if row.ticket.milestone %}<span class="badge ms-badge" title="delivery milestone">🏁 {{ row.ticket.milestone.name }}</span>{% endif %}
+      <span class="badge type-{{ row.ticket.type }}">{{ row.ticket.get_type_display }}</span>
+      {% if row.ticket.iteration %}<span class="iter">##{{ row.ticket.iteration.number }}</span>{% endif %}
+    </p>
+    {% if row.ticket.description %}
+      <p class="desc-excerpt" title="{{ row.ticket.description|md_excerpt:200 }}">{{ row.ticket.description|md_excerpt:140 }}</p>
+    {% endif %}
+  </div>
+
+  <div class="controls">
+    <span class="state-pill state-{{ row.state }}">
+      {% if row.state == 'started' %}▶ started{% elif row.state == 'finished' %}⚗ in review{% else %}unstarted{% endif %}
+    </span>
+
+    <div class="estimates">
+      {% for p in point_choices %}
+        <button class="pt{% if row.ticket.story_points == p %} active{% endif %}"
+                unicorn:click="set_points({{ row.ticket.id }}, {{ p }})">{{ p }}</button>
+      {% endfor %}
+    </div>
+
+    {% if row.state == 'unstarted' %}
+      <button class="act start" unicorn:click="advance({{ row.ticket.id }})" title="start work">▶ start</button>
+    {% elif row.state == 'started' %}
+      <button class="act finish" unicorn:click="advance({{ row.ticket.id }})" title="deliver for review">✓ finish</button>
+      <button class="act ghost" unicorn:click="rewind({{ row.ticket.id }})" title="unstart">unstart</button>
+    {% elif row.state == 'finished' %}
+      <button class="act accept" unicorn:click="advance({{ row.ticket.id }})" title="accept and archive">✔ accept</button>
+      <button class="act reject" unicorn:click="move_to({{ row.ticket.id }}, 'rejected')" title="reject">✕ reject</button>
+      <button class="act ghost" unicorn:click="rewind({{ row.ticket.id }})" title="back to started">re-open</button>
+    {% endif %}
+
+    {% if row.blocked %}
+      <span class="block-tools" title="blocked by {{ row.blocking|length }} ticket(s)">
+        {% for src in row.blocking %}
+          <button class="act ghost unblock"
+                  unicorn:click="remove_blocker({{ row.ticket.id }}, {{ src.id }})"
+                  title="resolve this blocker">⛔ #{{ src.id }}</button>
+        {% endfor %}
+      </span>
+    {% else %}
+      <details class="block-picker" title="flag this ticket as blocked by another ticket">
+        <summary>⛓ block</summary>
+        <span class="picker">blocked by:
+          {% for c in row.candidates %}
+            <button class="act ghost cand" unicorn:click="add_blocker({{ row.ticket.id }}, {{ c.id }})"
+                    title="mark #{{ c.id }} as the blocker">#{{ c.id }}</button>
+          {% empty %}
+            <em class="muted">nothing available</em>
+          {% endfor %}
+        </span>
+      </details>
+    {% endif %}
+
+    <button class="del" unicorn:click.confirm="delete_ticket({{ row.ticket.id }})"
+            title="delete">×</button>
+  </div>
+</article>

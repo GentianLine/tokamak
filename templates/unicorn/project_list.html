@@ -1,0 +1,29 @@
+<div>
+  {% if error %}<p class="flash">{{ error }}</p>{% endif %}
+
+  <form class="add-ticket" unicorn:submit.prevent="create_project">
+    <input type="text" unicorn:model="new_name" placeholder="New project name">
+    <input type="text" unicorn:model="new_description" placeholder="description (optional)">
+    <button type="submit">Create project</button>
+  </form>
+
+  <table class="projects">
+    <thead>
+      <tr><th>Project</th><th>Tickets</th><th>Backlog pts</th><th>Avg velocity</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for project in projects %}
+        <tr>
+          <td><a href="/projects/{{ project.id }}/">{{ project.name }}</a>
+              {% if project.archived %}<em>(archived)</em>{% endif %}</td>
+          <td>{{ project.tickets.all|length }}</td>
+          <td>{{ project.backlog_points }}</td>
+          <td>{{ project.average_velocity|floatformat:1|default:"—" }}</td>
+          <td><a class="btn" href="/projects/{{ project.id }}/">open board →</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No projects yet — create one above.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

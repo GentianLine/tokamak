@@ -1,0 +1,39 @@
+{% load static unicorn %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Tokamak{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon.svg' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+<div id="splash" aria-hidden="true">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" class="fusion-mark">
+    <g class="fusion-mark">
+      <circle class="core" cx="60" cy="60" r="14"/>
+      <circle class="ring" cx="60" cy="60" r="24"/>
+      <ellipse class="ring" cx="60" cy="60" rx="38" ry="14"/>
+      <ellipse class="ring r2" cx="60" cy="60" rx="38" ry="14" transform="rotate(60 60 60)"/>
+      <ellipse class="ring r2" cx="60" cy="60" rx="38" ry="14" transform="rotate(-60 60 60)"/>
+    </g>
+  </svg>
+  <div class="splash-name">Tokamak · <em>fusion engine</em></div>
+</div>
+
+<header class="topbar">
+  <a class="logo" href="/">
+    <img class="logo-mark" src="{% static 'img/favicon.svg' %}" alt="">
+    Tokamak
+  </a>
+  <nav><a href="/api/">REST API</a> · <a href="/admin/">Admin</a></nav>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+{% unicorn_scripts %}
+<script src="{% static 'js/splash.js' %}" defer></script>
+<script src="{% static 'js/board.js' %}" defer></script>
+<script src="{% static 'js/markdown.js' %}" defer></script>
+</body>
+</html>

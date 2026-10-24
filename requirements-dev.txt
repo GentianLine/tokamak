@@ -1,0 +1,4 @@
+# Development / CI tooling (not required at runtime).
+# Pinned to the version used to format the baseline so `black --check` is
+# deterministic between local and CI.
+black==26.10.1

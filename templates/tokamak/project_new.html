@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}New project · Tokamak{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/">Projects</a> / New project</p>
+
+<h1>New project
+  <span class="meta">write it once, clearly — markdown supported everywhere</span>
+</h1>
+
+<form class="creation-form" method="post">
+  {% csrf_token %}
+  {% if form.non_field_errors %}
+    <ul class="errors">{% for e in form.non_field_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <label for="{{ form.name.id_for_label }}">Name</label>
+  {{ form.name }}
+  {% if form.name.errors %}<p class="field-errors">{{ form.name.errors.0 }}</p>{% endif %}
+
+  <label for="{{ form.description.id_for_label }}">Description <span class="meta">markdown · #refs · previews live below</span></label>
+  {{ form.description }}
+  {% if form.description.errors %}<p class="field-errors">{{ form.description.errors.0 }}</p>{% endif %}
+
+  <div class="form-actions">
+    <button class="btn primary" type="submit">Create project</button>
+    <a class="btn-ghost" href="/">Cancel</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+<g class="fusion-mark">
+  <circle class="core" cx="60" cy="60" r="14"/>
+  <circle class="ring" cx="60" cy="60" r="24"/>
+  <ellipse class="ring" cx="60" cy="60" rx="38" ry="14"/>
+  <ellipse class="ring r2" cx="60" cy="60" rx="38" ry="14" transform="rotate(60 60 60)"/>
+  <ellipse class="ring r2" cx="60" cy="60" rx="38" ry="14" transform="rotate(-60 60 60)"/>
+</g>
+</svg>

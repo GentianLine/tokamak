@@ -1,0 +1,94 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+  <style>
+    .tokamak-analytics-summary { display: flex; gap: 1.5rem; margin: 1rem 0; }
+    .tokamak-analytics-summary .stat {
+      border: 1px solid var(--hairline-color, #ddd);
+      border-radius: 6px;
+      padding: .75rem 1rem;
+      min-width: 8rem;
+    }
+    .tokamak-analytics-summary .stat b { display: block; font-size: 1.4rem; }
+    .tokamak-analytics-filters { margin: 1rem 0; }
+    .tokamak-analytics-filters label { margin-right: .5rem; }
+    .tokamak-analytics-share { color: var(--body-quiet-color, #666); }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <form method="get" class="tokamak-analytics-filters">
+    <label for="project">Project:
+      <select name="project" id="project">
+        <option value="">All projects</option>
+        {% for p in projects %}
+          <option value="{{ p.id }}"{% if project and project.pk == p.id %} selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label for="days">Window (days):
+      <input type="number" name="days" id="days" min="1" value="{{ window_days|default_if_none:'' }}">    </label>
+    <label for="limit">Feed size:
+      <input type="number" name="limit" id="limit" min="1" max="100" value="{{ limit }}">
+    </label>
+    <button type="submit">Apply</button>
+    <a href="?">Reset</a>
+  </form>
+
+  <div class="tokamak-analytics-summary">
+    <div class="stat"><b>{{ total_events }}</b> events{% if project %} · {{ project.name }}{% endif %}</div>
+    <div class="stat"><b>{{ distinct_names }}</b> event names</div>
+    {% if window_days %}<div class="stat"><b>{{ window_days }}</b> day window</div>{% endif %}
+  </div>
+
+  <h2>Counts per event name</h2>
+  {% if counts %}
+    <table class="tokamak-analytics-counts">
+      <thead><tr><th>Event name</th><th>Total</th></tr></thead>
+      <tbody>
+        {% for row in counts %}
+          <tr><td>{{ row.name }}</td><td>{{ row.total }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No events recorded{% if project %} for {{ project.name }}{% endif %}. The audit trail is empty — nothing to analyze yet.</p>
+  {% endif %}
+
+  {% if rollup %}
+    <h2>Per-project rollup</h2>
+    <table class="tokamak-analytics-rollup">
+      <thead><tr><th>Project</th><th>Total events</th><th>Top event names</th></tr></thead>
+      <tbody>
+        {% for row in rollup %}
+          <tr>
+            <td>{{ row.project_name }}</td>
+            <td>{{ row.total }}</td>
+            <td>
+              {% for name, count in row.top_names %}
+                {{ name }} <span class="tokamak-analytics-share">({{ count }})</span>{% if not forloop.last %}, {% endif %}
+              {% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <h2>Recent activity</h2>
+  {% if feed %}
+    <ul class="tokamak-analytics-feed">
+      {% for row in feed %}
+        <li>
+          {{ row.created_at }} — <b>{{ row.name }}</b>
+          {% if row.project_id %}· project #{{ row.project_id }}{% endif %}
+          {% if row.ticket_id %}· ticket #{{ row.ticket_id }}{% endif %}
+          <span class="tokamak-analytics-share">({{ row.total }} total, {{ row.share_pct }}%)</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No recent activity in this scope.</p>
+  {% endif %}
+{% endblock %}

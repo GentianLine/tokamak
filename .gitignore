@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Django / local dev artifacts (never committed)
+db.sqlite3
+local_settings.py
+*.log
+.coverage
+coverage.*
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Scratch space shared via git notes; contents ignored on purpose
+scratch/**
+workspaces/
+
+# Stray scratch artifacts (object-id dumps etc.) never committed
+allobjs.txt

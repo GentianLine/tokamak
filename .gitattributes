@@ -1,0 +1,17 @@
+# Normalize line endings across platforms.
+* text=auto eol=lf
+
+# Treat known-binary / generated artifacts as binary so git never rewrites them.
+*.sqlite3 binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Python/Django are the primary languages for GitHub's linguist stats.
+*.py linguist-detectable=true
+*.html linguist-detectable=false
+*.css linguist-detectable=false
+*.js linguist-detectable=false

@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% load unicorn markdown_tags %}
+{% block title %}{{ project.name }} · Tokamak{% endblock %}
+{% block content %}
+<p class="crumbs"><a href="/">Projects</a> / {{ project.name }}</p>
+<h1>{{ project.name }}
+  <span class="meta">{{ project.backlog_points }} pts in backlog ·
+    velocity {% if project.average_velocity %}{{ project.average_velocity|floatformat:1 }} pts/iteration{% else %}no history yet{% endif %}
+  </span>
+</h1>
+
+<nav class="board-tabs">
+  <a class="tab active" href="/projects/{{ project.pk }}/">● Board</a>
+  <a class="tab" href="/projects/{{ project.pk }}/done/">✓ Done archive</a>
+</nav>
+
+{% if project.description %}
+<div class="rendered-md project-desc">{{ project.description|md_render }}</div>
+{% endif %}
+
+{% unicorn 'board' project_id=project.pk %}
+{% unicorn 'velocity' project_id=project.pk %}
+{% endblock %}

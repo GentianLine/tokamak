@@ -1,0 +1,5 @@
+[tool.black]
+# Preserve the codebase's established single-quote style; black's default
+# double-quote normalization would rewrite every string for no functional gain.
+skip-string-normalization = true
+target-version = ["py313"]

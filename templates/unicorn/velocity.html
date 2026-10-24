@@ -1,0 +1,91 @@
+<div class="velocity">
+  <h2>Velocity &amp; burndown &amp; sprint cutoff forecast</h2>
+
+  {% if series %}
+    <div class="bars">
+      {% for row in series %}
+        <div class="bar-row" title="Iteration {{ row.number }}: {{ row.points }} accepted / {{ row.committed }} committed">
+          <span class="bar-label">##{{ row.number }}</span>
+          <span class="bar" style="width: {% widthratio row.points max_points 220 %}px"></span>
+          <span class="bar-value">{{ row.points }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">No completed iterations yet — velocity will appear after the first sprint ends.</p>
+  {% endif %}
+
+  {% with bd=burndown svg=burndown_svg %}
+    <div class="burndown">
+      <h3 class="bd-title">Burndown · committed vs accepted</h3>
+      {% if svg.empty %}
+        <p class="empty bd-empty">No burndown yet — the chart draws once an
+          iteration has closed.</p>
+      {% else %}
+        <svg class="bd-svg" viewBox="{{ svg.view_box }}" role="img"
+             aria-label="Burndown: committed scope versus accepted points per iteration">
+          <g class="bd-axis">
+            {% for tick in svg.axis %}
+              <line class="bd-grid" x1="46" y1="{{ tick.y }}" x2="506" y2="{{ tick.y }}"/>
+              <text class="bd-tick" x="40" y="{{ tick.y }}" dy="3">{{ tick.label }}</text>
+            {% endfor %}
+          </g>
+          <g class="bd-bars">
+            {% for bar in svg.bars %}
+              <g class="bd-group{% if bar.active %} active{% endif %}" data-ratio="{{ bar.ratio }}"
+                 title="Iteration {{ bar.number }}: {{ bar.accepted }} accepted of {{ bar.committed }} committed ({{ bar.unaccepted }} left)">
+                <rect class="bd-scope" x="{{ bar.x }}" y="{{ bar.scope_y }}" width="18"
+                      height="{{ bar.scope_h }}" rx="2"/>
+                <rect class="bd-deliv" x="{{ bar.x }}" y="{{ bar.deliv_y }}" width="18"
+                      height="{{ bar.deliv_h }}" rx="2"/>
+                <text class="bd-xlab" x="{{ bar.label_x }}" y="{{ bar.label_y }}">{{ bar.number }}</text>
+              </g>
+            {% endfor %}
+          </g>
+          {% if svg.ideal_line %}
+            <polyline class="bd-ideal" points="{{ svg.ideal_line }}"/>
+          {% endif %}
+          {% if svg.burn_line %}
+            <polyline class="bd-burn" points="{{ svg.burn_line }}"/>
+          {% endif %}
+        </svg>
+        <ul class="bd-legend">
+          <li><span class="sw scope"></span> committed scope</li>
+          <li><span class="sw deliv"></span> accepted</li>
+          <li><span class="sw burn"></span> remaining (burn)</li>
+          <li><span class="sw ideal"></span> ideal pace</li>
+        </ul>
+        <p class="bd-summary">
+          {{ bd.summary.iterations }} iteration(s) · {{ bd.summary.scope_points }} pts committed
+          · {{ bd.summary.delivered_points }} accepted
+          {% if bd.summary.hit_rate is not None %}· hit rate {{ bd.summary.hit_rate|floatformat:1 }}{% endif %}
+          · best {{ bd.summary.best }} / worst {{ bd.summary.worst }}
+        </p>
+      {% endif %}
+    </div>
+  {% endwith %}
+
+  <div class="forecast">
+    <h3>Backlog forecast</h3>
+    <ul>
+      <li><strong>{{ forecast.remaining_points }}</strong> points remaining in backlog</li>
+      <li><strong>{{ forecast.average_velocity|default:"—" }}</strong> average velocity
+          (accepted pts / completed iteration)</li>
+      <li><strong>{{ forecast.iteration_length_days }}d</strong> iteration length</li>
+      {% if forecast.estimated_cutoff %}
+        <li><strong>{{ forecast.iterations_needed }}</strong> more iterations needed</li>
+        <li class="cutoff">📅 Estimated cutoff: <strong>{{ forecast.estimated_cutoff }}</strong></li>
+        {% if forecast.estimated_cutoff_pessimistic %}
+          <li class="pessimistic" title="velocity is noisy — one sprint of slack added">
+            pessimistic: {{ forecast.estimated_cutoff_pessimistic }}
+          </li>
+        {% endif %}
+        {% if forecast.confidence is not None %}
+          <li>confidence: {{ forecast.confidence|floatformat:2 }}</li>
+        {% endif %}
+      {% else %}
+        <li>Not enough history to estimate a cutoff yet — accept some tickets in at least one finished iteration.</li>
+      {% endif %}
+    </ul>
+  </div>
+</div>

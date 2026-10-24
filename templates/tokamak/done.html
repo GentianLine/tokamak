@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% load markdown_tags %}
+{% block title %}Done · {{ project.name }} · Tokamak{% endblock %}
+{% block content %}
+<p class="crumbs">
+  <a href="/">Projects</a> /
+  <a href="/projects/{{ project.id }}/">{{ project.name }}</a> /
+  Done
+</p>
+
+<h1>{{ project.name }} · done archive
+  <span class="meta">
+    {{ accepted_count }} accepted ({{ accepted_points }} pts) ·
+    {{ rejected_count }} rejected ({{ rejected_points }} pts)
+  </span>
+</h1>
+
+<div class="archive">
+  {% for group in groups %}
+    <section class="archive-group">
+      <header>
+        <h2>
+          {% if group.iteration %}
+            Iteration #{{ group.iteration.number }}
+            <span class="meta">
+              {{ group.iteration.start_date|date:"M j" }} – {{ group.iteration.end_date|date:"M j, Y" }} ·
+              {{ group.accepted_points }} pts accepted
+            </span>
+          {% else %}
+            Unscheduled / no iteration
+          {% endif %}
+        </h2>
+      </header>
+      <ul class="archive-list">
+        {% for ticket in group.tickets %}
+          <li class="archive-row state-{{ ticket.state }} type-{{ ticket.type }}">
+            <span class="verdict">{% if ticket.state == 'accepted' %}✔{% else %}✕{% endif %}</span>
+            <button class="points{% if not ticket.story_points %} nil{% endif %}">{{ ticket.story_points|default:'?' }}</button>
+            <a class="name" href="/tickets/{{ ticket.id }}/">{{ ticket.name }}</a>
+            {% if ticket.description %}
+              <span class="desc-excerpt" title="{{ ticket.description|md_excerpt:200 }}">
+                {{ ticket.description|md_excerpt:140 }}
+              </span>
+            {% endif %}
+            <span class="badge type-{{ ticket.type }}">{{ ticket.get_type_display }}</span>
+            <span class="state-pill state-{{ ticket.state }}">{{ ticket.get_state_display|lower }}</span>
+            {% if ticket.completed_at %}<span class="when">{{ ticket.completed_at|date:"M j" }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% empty %}
+    <p class="empty">
+      Nothing delivered yet. Accept or reject a ticket on the
+      <a href="/projects/{{ project.id }}/">board</a> and it will land here.
+    </p>
+  {% endfor %}
+</div>
+
+<div class="actions">
+  <a class="btn" href="/projects/{{ project.id }}/">← Back to board</a>
+</div>
+{% endblock %}

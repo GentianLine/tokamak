@@ -1,0 +1,63 @@
+{% load unicorn %}
+<div>
+  {% if error %}<p class="flash" unicorn:click="error=''">{{ error }} (click to dismiss)</p>{% endif %}
+
+  <div class="board-head">
+    <form class="add-ticket" unicorn:submit.prevent="add_ticket">
+      <input type="text" unicorn:model="new_ticket_name"
+             placeholder="Add a ticket… (enter to save)">
+      <select unicorn:model="new_ticket_type">
+        {% for value, label in type_choices %}
+          <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">＋ Add</button>
+    </form>
+    <a class="btn-ghost new-ticket" href="/projects/{{ project_id }}/tickets/new/"
+       title="rich markdown creation page (story points, types, previews)">
+      ✎ New ticket · full page
+    </a>
+    <a class="archive-link btn-ghost" href="/projects/{{ project_id }}/done/"
+       title="accepted and rejected tickets leave the board and archive here">
+      ✓ Done archive · {{ done_count }} →
+    </a>
+  </div>
+
+  {% with grouping=grouping %}
+    {% if grouping.epics or grouping.milestones %}
+      <div class="grouping">
+        {% for m in grouping.milestones %}
+          <span class="chip milestone{% if m.complete %} complete{% endif %}" title="milestone · {{ m.accepted }}/{{ m.total }} accepted ({{ m.accepted_points }} pts)">🏁 {{ m.milestone.name }}{% if m.milestone.due_date %} · {{ m.milestone.due_date }}{% endif %}{% if m.complete %} ✓{% endif %}</span>
+        {% endfor %}
+        {% for e in grouping.epics %}
+          <span class="chip epic" title="epic · {{ e.total }} tickets, {{ e.accepted }} accepted, {{ e.points }} pts">◆ {{ e.epic.name }} · {{ e.accepted }}/{{ e.total }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% with stream=stream %}
+    <div class="board stream">
+      {% for row in stream.rows %}
+        {% if row.above_line %}{% include 'unicorn/board_row.html' with row=row %}{% endif %}
+      {% endfor %}
+
+      {% if stream.line %}
+        <div class="sprint-line{% if stream.line.dotted %} dotted{% endif %}"
+             title="{{ stream.line.basis }} — the line sits where the sprint runs out of capacity">
+          <span class="tag">
+            sprint line · {{ stream.line.points }} pts/sprint
+            {% if stream.line.dotted %}<em class="why">dotted: not enough history</em>{% endif %}
+          </span>
+        </div>
+      {% endif %}
+
+      {% for row in stream.rows %}
+        {% if not row.above_line %}{% include 'unicorn/board_row.html' with row=row %}{% endif %}
+      {% empty %}
+        <p class="empty">Nothing on the board — add a ticket above, or visit the
+          <a href="/projects/{{ project_id }}/done/">done archive</a>.</p>
+      {% endfor %}
+    </div>
+  {% endwith %}
+</div>
