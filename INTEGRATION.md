@@ -6,6 +6,44 @@ Context Language Models, arXiv:2609.37725). The bridge lives in
 `tokamak/memory.py` and never activates unless you opt it in — the dependency is
 lazy-imported, so a checkout without `pip install clm-mem` still runs everything.
 
+## The served-mode contract (explicit session API)
+
+Served mode speaks the **explicit session API** from the clm-mem branch
+[`spike/session-api`](https://github.com/glassresistor/clm-mem/tree/spike/session-api)
+(spec: that repo's `README.md` "Client contract" + `clm_mem/remote.py`; full
+migration plan: `docs/library-migration.md`). Pin the branch (editable
+install / track the branch) until it lands on `main`; the bridge skips its
+served-mode tests when the installed SDK predates `open()`/`turn()`.
+
+What changed for consumers:
+
+* **No header-driven memory.** The legacy `X-Cllm-Mem-Session` /
+  `X-Cllm-Mem-Chat` headers are gone; sending them earns a **410 Gone**
+  with a migration hint. `/v1/chat/completions` is pure passthrough — it
+  never remembers.
+* **Sessions are branches you manage**, not request decorations:
+
+  ```http
+  POST /v1/clm/sessions                    {"session": "ws:project-3", "options": {...}} -> 201 created / 200 reopened
+  POST /v1/clm/sessions/ws%3Aproject-3/turns {"content": "...", "chat": "chat-001"}     -> reply + clm_mem truth
+  DELETE /v1/clm/sessions/<id>             drop at end of lifecycle (good citizen)
+  ```
+
+* Creation-time options (`max_context_tokens`, `shortterm_keep_pct`,
+  `classify_mode`, ...) ride on **open** only; a reopen never reshapes a
+  live branch. Per-turn knobs (`temperature`, `max_tokens`) stay per turn.
+* Turns never create sessions (**409** unknown branch); bare ids like
+  `"alice"` name nothing (**400**, branch ids are `ws:<name>`).
+* The bridge implements this in `tokamak/memory.py`: eager open at
+  `open_session()`/`ticket_harness()` (fail fast at connect time, plan rule
+  2), ingest via `turn()` (`remote_ingest()`), deliberate cleanup via
+  `drop_session()` / `drop_ticket_branch()` (DELETE). Ticket-session ends
+  drop the branch server-side; local-mode branches have no server-side
+  lifecycle.
+* Isolation is structural: a turn in one branch never sees another's
+  blocks; cross-session continuity (`seed_from_archive` handoff) is an
+  explicit application-level copy, replayed as ingest turns.
+
 ## Why memory here
 
 Tokamak's `EventLog` already records *what happened*; clm-mem adds *what an agent

@@ -175,7 +175,9 @@ def test_monitor_url_served_mode(db, tmp_path):
         mode='served',
         backend_base_url='http://127.0.0.1:8080/v1',
     ):
-        # daemon unreachable is fine (best-effort seeding)
+        # Explicit contract: open() is fail-fast, so a *closed port* must
+        # raise MemoryUnavailable and the service layer degrades around it
+        # (best-effort seeding keeps the DB lifecycle alive).
         s = services.open_ticket_session(t)
         assert s.monitor_url == f'http://127.0.0.1:8080/?session=ws:ticket-{t.id}'
 

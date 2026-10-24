@@ -483,7 +483,9 @@ def _end_memory_session(session, *, reason='', summary=None):
             'offloaded': offloaded,
             'archive': getattr(harness, 'archive_size', lambda: 0)(),
         }
-        bridge.close_ticket_harness(ticket.id)
+        # End-of-lifecycle: served branches are dropped server-side (DELETE
+        # /v1/clm/sessions/<id>); local harnesses just release the cache.
+        bridge.drop_ticket_branch(ticket.id)
     except Exception:
         # served backends may be unreachable; the DB lifecycle still ends.
         summary = summary or ''

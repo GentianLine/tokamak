@@ -94,9 +94,20 @@ def memory_note(request):
             harness.evict()
             harness.mirror_files()
             block_id = block.id
-        else:  # served mode: server-side classifier decides the tag
-            harness.step(text)
+        else:  # served mode: explicit turn; server-side classifier tags it,
+            # and the reply payload carries this turn's event chips.
+            resp = memory.remote_ingest(harness, text)
+            mem = resp.get('clm_mem') or {}
+            evs = mem.get('events') or []
             block_id = None
+            for ev in reversed(evs):
+                if str(ev.get('kind', '')).startswith('add'):
+                    import re as _re
+
+                    m = _re.search(r'#(\d+)', ev.get('text', ''))
+                    if m:
+                        block_id = int(m.group(1))
+                        break
         return JsonResponse({'enabled': True, 'block_id': block_id})
     except memory.MemoryUnavailable as exc:
         return JsonResponse({'error': str(exc)}, status=400)

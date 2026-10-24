@@ -21,6 +21,17 @@ Two backends ("modes"):
   ``clm-mem serve`` proxy, so swarm agents sharing a server share one live
   memory window per project (session id ``ws:project-<pk>``).
 
+Served mode speaks the **explicit session API** (clm-mem branch
+``spike/session-api``, see clm-mem/docs/library-migration.md): memory is no
+longer a header side effect of ``/v1/chat/completions``. A memory session is
+a *branch* that you open deliberately —
+``POST /v1/clm/sessions {"session": "ws:<name>", "options": {...}}`` — and
+converse with through ``POST /v1/clm/sessions/<id>/turns``. The bridge opens
+branches eagerly at :func:`open_session` (fail fast at connect time, so
+creation-time budget knobs actually reach the server), keeps them in the
+process cache, and drops them deliberately via
+when tokamak ends a session (DELETE mirrors the SDK contract; see :func:`drop_ticket_branch`).
+
 Git-repo conventions for this integration (see INTEGRATION.md):
 
 * Session sandboxes live under ``<TOKAMAK_MEMORY['workdir']>/projects/<pk>``
@@ -80,6 +91,14 @@ class MemoryUnavailable(RuntimeError):
     """Bridge disabled, clm-mem missing, or the served backend unreachable."""
 
 
+class UnknownSession(MemoryUnavailable):
+    """A served turn hit a branch nobody opened (server 409).
+
+    Turns never create sessions on the new contract; callers must open()
+    first. Silently re-creating on this would resurrect the old "sessions
+    appear from nowhere" bug class, so it is a typed error instead."""
+
+
 class MirrorRecord:
     """Lightweight event-shaped record for live mirroring (no DB round-trip).
 
@@ -129,6 +148,65 @@ def _session_dir(cfg: Dict, project_id: int) -> str:
     return os.path.join(cfg['workdir'], 'projects', str(project_id))
 
 
+def _open_remote(harness, options: Optional[Dict] = None):
+    """Open (or reopen) a served branch eagerly — fail fast at connect time.
+
+    The explicit contract never creates sessions implicitly: turns 409 on
+    unknown branches, and creation-time knobs (budget/keep-pct/classify/
+    decay) only reach the server through ``open(options=...)``. Reopening is
+    idempotent (never reshapes a live branch), so this is safe to call from
+    every cache-miss path."""
+    try:
+        resp = harness.open(options=options)
+    except RuntimeError as exc:
+        raise MemoryUnavailable(f'cannot open memory branch: {exc}') from exc
+    # ``created`` is advisory on the current spike server (a reopened branch
+    # may still answer created:true); treat any successful open as "opened"
+    # and rely on the reopen-is-never-a-reshape rule, not the flag.
+    resp['accepted'] = True
+    return resp
+
+
+def _serve_remote(cfg: Dict, session: str):
+    """Build *and open* a served RemoteHarness (options ride on open())."""
+    from clm_mem import RemoteHarness
+
+    harness = RemoteHarness(
+        cfg['backend_base_url'],
+        session=session,
+        api_key=cfg.get('api_key', 'EMPTY'),
+    )
+    options = {
+        'max_context_tokens': int(cfg['max_context_tokens']),
+        'shortterm_keep_pct': float(cfg['shortterm_keep_pct']),
+        'classify_mode': 'post',
+    }
+    _open_remote(harness, options)
+    harness._opened = True  # SDK sugar (step) must not re-open per turn
+    return harness
+
+
+def remote_ingest(harness, text: str):
+    """One served ingest turn; map the contract's errors to bridge errors.
+
+    A turn on a branch that vanished server-side (daemon restart drops the
+    live window) is a 409 through the SDK's RuntimeError: reopen once and
+    retry — an *open* branch, never an implicit-creation surprise."""
+    try:
+        return harness.turn(text)
+    except UnknownSession as exc:
+        _open_remote(harness)
+        raise
+    except MemoryUnavailable:
+        raise
+    except RuntimeError as exc:
+        code = str(exc).split(':', 1)[0]
+        if code == '409':
+            _open_remote(harness)
+            raise UnknownSession(str(exc)) from exc
+        raise MemoryUnavailable(str(exc)) from exc
+
+
 def open_session(project_id: int):
     """Cached per-process memory session for one project (both modes).
 
@@ -174,11 +252,7 @@ def open_session(project_id: int):
             raise MemoryUnavailable(
                 "served mode needs TOKAMAK_MEMORY['backend_base_url']"
             )
-        harness = RemoteHarness(
-            cfg['backend_base_url'],
-            session=f'ws:project-{project_id}',
-            api_key=cfg.get('api_key', 'EMPTY'),
-        )
+        harness = _serve_remote(cfg, f'ws:project-{project_id}')
     else:
         raise MemoryUnavailable(f"unknown TOKAMAK_MEMORY mode {cfg['mode']!r}")
 
@@ -192,6 +266,33 @@ def close_session(project_id: Optional[int] = None) -> None:
         _SESSIONS.clear()
     else:
         _SESSIONS.pop(project_id, None)
+
+
+def drop_session(project_id: int) -> bool:
+    """End-of-lifecycle cleanup for a served project branch.
+
+    Branches are visible server-side (``GET /v1/clm/sessions``, ``/health``)
+    and persist until dropped — be a good citizen instead of leaving the
+    daemon holding memory nobody owns. The SDK ships no ``drop()``, so the
+    bridge mirrors its DELETE verb directly; local harnesses have no
+    server-side lifecycle, so this just releases the cached instance."""
+    harness = _SESSIONS.pop(project_id, None)
+    if harness is None:
+        return False
+    drop = getattr(harness, 'drop', None)
+    if drop is not None:  # a future SDK that owns the verb
+        try:
+            drop()
+        except Exception:
+            return False
+        return True
+    if hasattr(harness, '_snap_path'):  # RemoteHarness
+        try:
+            harness._req('DELETE', harness._snap_path)
+        except Exception:
+            return False
+        return True
+    return True  # local: cache release *is* the whole lifecycle
 
 
 # --- mirroring --------------------------------------------------------------
@@ -218,7 +319,7 @@ def remember_event(event, tag: Optional[str] = None):
     local mode admits it directly as a tagged block (no LLM call), then runs
     the eviction engine + context-as-a-file mirror so the budget holds even
     when nobody ever *chats* with the harness; served mode feeds it through
-    the server pipeline via step() so the live model tags it.
+    the server pipeline via an explicit turn so the live model tags it.
     """
     session_key = getattr(event, 'project_id', None) or -1
     harness = open_session(session_key)
@@ -234,8 +335,9 @@ def remember_event(event, tag: Optional[str] = None):
         harness.evict()
         harness.mirror_files()
         return block
-    # RemoteHarness: the server classifies it on ingest
-    return harness.step(text)
+    # RemoteHarness: turn() so the server classifies it on ingest; the reply
+    # carries harness truth under ``clm_mem`` (event chips replace polling).
+    return remote_ingest(harness, text)
 
 
 def mirror_event(event) -> None:
@@ -294,7 +396,7 @@ def session_status(project_id: int) -> Dict:
         except Exception:
             pass
         return snap
-    # RemoteHarness has no counts(); snapshot already carries the essentials.
+    # RemoteHarness snapshot already carries counts/budget from the server.
     return harness.snapshot()
 
 
@@ -350,7 +452,7 @@ def ticket_harness(ticket):
         raise MemoryUnavailable('Tokamak memory bridge is disabled')
     if not clm_mem_available():
         raise MemoryUnavailable('clm-mem is not installed (pip install clm-mem)')
-    from clm_mem import HarnessConfig, MemoryHarness, RemoteHarness
+    from clm_mem import HarnessConfig, MemoryHarness
 
     cfg = get_config()
     tid = ticket.id if hasattr(ticket, 'id') else int(ticket)
@@ -383,11 +485,10 @@ def ticket_harness(ticket):
             raise MemoryUnavailable(
                 "served mode needs TOKAMAK_MEMORY['backend_base_url']"
             )
-        harness = RemoteHarness(
-            cfg['backend_base_url'],
-            session=sid,
-            api_key=cfg.get('api_key', 'EMPTY'),
-        )
+        # Eager open at connect time (plan rule 2): creation-time options
+        # reach the server, and creation failures surface here instead of
+        # mid-conversation. A reopen is idempotent and never reshapes.
+        harness = _serve_remote(cfg, sid)
     else:
         raise MemoryUnavailable(f"unknown TOKAMAK_MEMORY mode {cfg['mode']!r}")
     _TICKET_SESSIONS[tid] = harness
@@ -395,7 +496,34 @@ def ticket_harness(ticket):
 
 
 def close_ticket_harness(ticket_id: int) -> None:
+    """Release a cached ticket harness. Served branches stay open on the
+    daemon until :func:`drop_ticket_branch` — closing the cache entry is
+    not the end of a branch's server-side lifecycle."""
     _TICKET_SESSIONS.pop(int(ticket_id), None)
+
+
+def drop_ticket_branch(ticket_id: int) -> bool:
+    """DELETE /v1/clm/sessions/<id>: end-of-lifecycle cleanup for a served
+    ticket branch (be a good citizen; branches are visible in /health).
+    Local harnesses have no server-side lifecycle — cache release only."""
+    tid = int(ticket_id)
+    harness = _TICKET_SESSIONS.pop(tid, None)
+    if harness is None:
+        return False
+    drop = getattr(harness, 'drop', None)
+    if drop is not None:  # a future SDK that owns the verb
+        try:
+            drop()
+        except Exception:
+            return False
+        return True
+    if hasattr(harness, '_snap_path'):  # RemoteHarness: mirror DELETE
+        try:
+            harness._req('DELETE', harness._snap_path)
+        except Exception:
+            return False
+        return True
+    return True  # local: cache release *is* the whole lifecycle
 
 
 def monitor_url_for(mode: str, base_url: str = '') -> str:
@@ -456,28 +584,46 @@ def model_distill(harness, ticket_name: str = '') -> str:
 
     Only meaningful with a real (non-stub) backend configured; failures are
     reported as empty string so callers keep the deterministic summary.
+    Served branches answer via turn() (reply under ``choices``); local
+    harnesses answer with the bare reply string.
     """
+    prompt = (
+        f"Summarize what we learned about ticket '{ticket_name}' in at "
+        "most 5 bullet lines, past tense, no preamble."
+    )
     try:
-        reply = harness.step(
-            f"Summarize what we learned about ticket '{ticket_name}' in at "
-            "most 5 bullet lines, past tense, no preamble."
-        )
+        if hasattr(harness, 'turn'):  # RemoteHarness (explicit session API)
+            resp = remote_ingest(harness, prompt)
+            reply = resp['choices'][0]['message']['content']
+        else:
+            reply = harness.step(prompt)
         return str(reply).strip()[:1200]
     except Exception:
         return ''
 
 
 def seed_from_archive(harness, query: str = '', limit: int = 8) -> int:
-    """Memory handoff: pull archived facts back into a fresh attempt's window."""
+    """Memory handoff: pull archived facts back into a fresh attempt's window.
+
+    Local harnesses admit them directly as shortterm blocks. Served branches
+    get the same effect through an explicit application-level copy (plan
+    rule 6: isolation is structural — there is no broadcast semantics):
+    each archived fact is replayed as an ingest turn so the server-side
+    classifier re-tags it inside this branch.
+    """
     n = 0
-    for rec in harness.recall(query or '', limit=limit):
-        harness.add(
-            'user',
-            f"[seed from previous session] {rec['content']}",
-            tag='shortterm',
-        )
-        n += 1
-    if hasattr(harness, 'evict'):
+    if hasattr(harness, 'add'):  # local MemoryHarness
+        for rec in harness.recall(query or '', limit=limit):
+            harness.add(
+                'user',
+                f"[seed from previous session] {rec['content']}",
+                tag='shortterm',
+            )
+            n += 1
         harness.evict()
         harness.mirror_files()
+        return n
+    for rec in harness.recall(query or '', limit=limit):
+        remote_ingest(harness, f"[seed from previous session] {rec['content']}")
+        n += 1
     return n
