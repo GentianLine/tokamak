@@ -456,52 +456,59 @@ tasks`); status markers below reflect what actually landed on `main`.
 | md-render-core / creation-pages / md-editor-ui / md-surfaces | GFM renderer, creation pages, editor widget, rendered surfaces |
 | rename-tokamak | whole-repo rename onto the Tokamak identity: no `pivot`/`pivotal`/`aigle` branding and no `tracker/` package remain (verified with `git grep`) |
 | blockers-epics-milestones | Blocker edge table + Epic/Milestone models, services, REST, board + detail UI (26 tests) |
-| clm-mem session-API migration | served mode on the explicit session API (`spike/session-api` contract landed on clm-mem `main`) |
+| clm-mem session-API migration | served mode speaks the explicit session API (`open()`/`turn()`/DELETE verbs); mirrored in INTEGRATION.md and `tokamak/memory.py` |
 
 ### Open backlog
 
-1. **automation-webhooks** *(lane: automation; branch exists, never merged)* —
+1. **verify-served-mode-tests** *(lane: env/CI; low)* — the 12 served-mode
+    memory tests are currently **skipped** here ("clm-mem explicit session API
+    not installed"): the checkout resolves `clm_mem` from a shared site-packages
+    dir (`.unsloth-packages`) that predates `open()`/`turn()`, and the base
+    `.venv` shebang points at a deleted path (`…/pivotboard/.venv/bin/python`).
+    Rebuild the base venv per AGENTS.md §2 with the pinned git install so served
+    mode actually runs in CI, or mark the skip as expected.
+2. **automation-webhooks** *(lane: automation; branch exists, never merged)* —
    config-driven webhook fan-out receivers mirroring `EventLog` rows, off by
    default, idempotent delivery with HMAC signing + retries. The worker branch
    `agent/adm1-automation-webhooks` (commit `25a88fe`, 13 tests, `tokamak/webhooks.py`)
    is **not integrated on main** (`tokamak/webhooks.py` and `tests/test_webhooks.py`
    exist on that commit but nowhere on `main`) — merge or rebase it, then mark
    this done.
-2. **cutoff-surface-board** *(lane: templates + board component; low)* — the
+3. **cutoff-surface-board** *(lane: templates + board component; low)* — the
    pessimistic cutoff and confidence score already render in the velocity panel;
    decide whether the *board* template should also show remaining points /
    estimated cutoff inline, or drop the task as superseded.
-3. **md-edit-pages** *(lane: pages + services; med)* — edit an existing project
+4. **md-edit-pages** *(lane: pages + services; med)* — edit an existing project
    or ticket description through the editor widget on detail pages. Needs a new
    service fn for ticket description edits (none exists; `save_project` already
    covers projects). Must fire a signal (`ticket_updated`) and audit into
    `EventLog`.
-4. **md-ref-integrity** *(lane: markdown; low)* — dangling tracker references are
+5. **md-ref-integrity** *(lane: markdown; low)* — dangling tracker references are
    currently *silently unlinked* when the target is deleted (existence rule).
    Decide and indicate it: keep the read-only rule but surface a stale-ref marker
    or an admin report of refs pointing at deleted rows.
-5. **delete-ticket-service** *(lane: services; med, new)* — introduce
+6. **delete-ticket-service** *(lane: services; med, new)* — introduce
    `services.delete_ticket(ticket)` so board deletes stop bypassing the service
    layer: fire a signal, write an EventLog row, and decide what should happen to
    blocker edges that point *at* the deleted ticket (today they cascade away via
    `on_delete=CASCADE` on both `Blocker.source` / `Blocker.target`, silently).
    Deleting a project additionally wipes tickets/iterations/epics/milestones by
    cascade with no audit trail at all.
-6. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
+7. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
    permission layer anywhere: every REST endpoint and page is open, admin is
    reachable for anyone who can reach it, `ALLOWED_HOSTS=['*']`, memory write
    routes are `csrf_exempt`. Add DRF permission classes + Django auth on the
    pages, or consciously document this as a single-user tool.
-7. **css-polish** *(lane: css; deprioritised)* — append-only readability
+8. **css-polish** *(lane: css; deprioritised)* — append-only readability
    improvements at the end of `static/css/app.css`; no class renames.
    Deprioritised because the design language was rewritten twice recently.
-8. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
+9. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
    as clm-mem MCP tools (`clm-mem serve` is already an MCP server at `/mcp` with
    a tool list); pairs with the webhook fan-out so one place feeds both.
-9. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
+10. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
-10. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
+11. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
     playbook leaves until humans confirm (`git worktree list`). The outer sandbox
@@ -517,8 +524,10 @@ tasks`); status markers below reflect what actually landed on `main`.
 * `INTEGRATION.md` still tells you to `pip install clm-mem` (a bare name that
   isn't on PyPI) and links the harness + session-API spec at the
   `glassresistor/clm-mem` repo and its `spike/session-api` branch, while
-  requirements.txt pins `GentianLine/clm-mem@main` where that contract landed;
-  its "Roadmap ideas" still list webhook fan-out as not-yet-built (true on main,
-  but the branch exists).
+  requirements.txt pins `GentianLine/clm-mem@main`; on that remote the contract
+  lives on **both** `main` and a still-open `spike/session-api` branch (both
+  updated Oct 25 2026), so the "pin the branch until it lands" advice in its
+  served-mode section is stale. Its "Roadmap ideas" also still list webhook
+  fan-out as not-yet-built (true on main, but a branch exists).
 * The README badge URLs carry an `OWNER` placeholder — replace with the real
   GitHub account/org once the repo is hosted.
