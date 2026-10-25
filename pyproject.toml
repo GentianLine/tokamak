@@ -1,3 +1,30 @@
+[project]
+name = "tokamak"
+version = "0.1.0"
+description = "Story-point board on Django + Django Unicorn: one service layer, REST API, and signals for automation."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+# Runtime dependencies. clm-mem is installed as part of the setup (it powers
+# the optional memory bridge); it is not on PyPI, so it is pinned via a PEP 508
+# direct-reference to the GitHub repo.
+dependencies = [
+    "django>=5.0",
+    "djangorestframework>=3.15",
+    "django-unicorn>=0.67,<0.68",
+    "markdown-it-py>=4.0",
+    "mdit_py_plugins>=0.6",
+    "linkify-it-py>=2.1",
+    "clm-mem @ git+https://github.com/GentianLine/clm-mem.git@main",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-django>=4.8",
+    "black==26.10.1",
+]
+
 [tool.black]
 # Preserve the codebase's established single-quote style; black's default
 # double-quote normalization would rewrite every string for no functional gain.

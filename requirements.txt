@@ -6,7 +6,8 @@ mdit_py_plugins>=0.6
 linkify-it-py>=2.1
 pytest>=8.0
 pytest-django>=4.8
-# clm-mem is OPTIONAL (lazy-imported; a checkout without it still runs).
-# Served mode requires the explicit-session-API branch until it lands on main:
-#   pip install git+https://github.com/glassresistor/clm-mem.git@spike/session-api
-# (or `pip install -e ../clm-mem` when tracking a local clone of that branch).
+# clm-mem is installed as part of the setup (it powers the memory bridge).
+# It is not on PyPI, so it is pulled straight from GitHub via pip's PEP 508
+# direct-reference. The explicit-session-API code tokamak needs now lives on
+# main, so tracking main is sufficient.
+clm-mem @ git+https://github.com/GentianLine/clm-mem.git@main
