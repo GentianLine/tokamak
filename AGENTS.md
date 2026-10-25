@@ -19,14 +19,14 @@ Key files to know before touching anything:
 |---|---|---|
 | Models | `tokamak/models.py` | Project, Iteration, Ticket, EventLog |
 | Service layer (single source of truth) | `tokamak/services.py` | mutations + workflow rules + velocity/cutoff math |
-| Signal contract | `tokamak/signals.py` | 5 signals; payload kwarg names are part of the public API |
+| Signal contract | `tokamak/signals.py` | seven custom signals (incl. the two blocker-graph ones); payload kwarg names are part of the public API |
 | Automation receivers | `tokamak/automation.py` | example processors; registered via AppConfig.ready() |
 | REST API | `tokamak/views.py`, `tokamak/api_urls.py` | DRF viewsets + action endpoints |
 | Reactive UI components | `tokamak/components/*.py` | UnicornViews: board, velocity, project_list |
 | Templates | `templates/unicorn/*.html`, `templates/tokamak/*.html` | component templates |
 | Client JS (drag & drop) | `static/js/board.js` | calls the Unicorn component; never touches DB directly |
 | Styles | `static/css/app.css` | plain CSS, no build step |
-| Tests | `tests/*` | pytest suite (125 tests): services+signals, forecast math, REST, unicorn components, page renders, markdown, reorder |
+| Tests | `tests/*` | pytest suite (~195 collected / 183 passing + 12 skipped served-mode): services+signals, forecast math, burndown, blockers, admin event analytics, REST, unicorn components, page renders, markdown, reorder, memory mirroring + ticket sessions |
 
 Non-negotiable conventions (violating these breaks other agents' work):
 
@@ -63,8 +63,12 @@ python manage.py runserver          # home / · board /projects/<id>/ · api /ap
 * Tests run under pytest with pytest-django (see `pytest.ini`); the suite
   lives under `tests/` as function-based modules. Add new tests there rather
   than reintroducing class-based unittests.
-* The optional memory bridge needs `clm-mem`, which is **not on PyPI** —
-  install it from GitHub: `pip install "git+https://github.com/glassresistor/clm-mem.git"`.
+* The optional memory bridge needs `clm-mem`, which is **not on PyPI** — a
+  plain `pip install -r requirements.txt` brings it in, because
+  `requirements.txt` pins it as a PEP 508 direct-reference at
+  `GentianLine/clm-mem@main` (the explicit-session-API contract landed on
+  that remote's `main`). The equivalent standalone command:
+  `pip install "git+https://github.com/GentianLine/clm-mem.git@main"`.
 
 ### The base demo venv (`.venv/`, gitignored)
 
@@ -77,15 +81,17 @@ base root:
 ```bash
 python -m venv .venv
 PYTHONPATH="" PIP_TARGET="" .venv/bin/python -m pip install --ignore-installed \
-    -r requirements.txt -r requirements-dev.txt \
-    "git+https://github.com/glassresistor/clm-mem.git"
+    -r requirements.txt -r requirements-dev.txt
+# requirements.txt already pins clm-mem (GentianLine/clm-mem@main) as a
+# direct-reference, so no extra git argument is needed here.
 ```
 
 * **Keep it up to date:** if you change `requirements.txt` or
   `requirements-dev.txt`, refresh the base venv from the base repo root as
   part of your definition of done, e.g.:
   `.venv/bin/python -m pip install --ignore-installed -r requirements.txt -r requirements-dev.txt`
-  (add the clm-mem git URL too). CI cannot do this for you — a stale venv is
+  (requirements.txt carries the pinned clm-mem direct-reference, so no extra
+  git URL is needed). CI cannot do this for you — a stale venv is
   a broken demo.
 * **Never use it from a workspace.** Agent worktrees under `workspaces/` run
   on their own interpreter (the agent sandbox environment, or a per-worktree

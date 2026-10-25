@@ -1,6 +1,6 @@
 # Tokamak — story points at plasma pressure (Django + Django Unicorn)
 
-[![Tests](https://github.com/OWNER/tokamak/actions/workflows/test.yml/badge.svg)](https://github.com/OWNER/tokamak/actions/workflows/test.yml) [![Lint](https://github.com/OWNER/tokamak/actions/workflows/lint.yml/badge.svg)](https://github.com/OWNER/tokamak/actions/workflows/lint.yml)
+[![Tests](https://github.com/GentianLine/tokamak/actions/workflows/test.yml/badge.svg)](https://github.com/GentianLine/tokamak/actions/workflows/test.yml) [![Lint](https://github.com/GentianLine/tokamak/actions/workflows/lint.yml/badge.svg)](https://github.com/GentianLine/tokamak/actions/workflows/lint.yml)
 
 A simple, fast story-point board built for the long game: **every action is
 driven through one service layer**, exposed both as a reactive UI
@@ -319,8 +319,9 @@ The repo is ready to push: it has CI workflows, an MIT `LICENSE`, `.gitattribute
 initialize the hosted project — create the repository on GitHub, add it as a
 remote (`git remote add origin <url>`), then `git push -u origin main`. Turn on
 branch protection for `main` requiring the **Tests** and **Lint** status checks
-before merge. (Replace the `OWNER` placeholder in the badge URLs above with your
-GitHub account/org once the repo exists.)
+before merge. This repo is already hosted at
+[`GentianLine/tokamak`](https://github.com/GentianLine/tokamak), so the badge
+URLs above point at it; update them again only if the project ever moves.
 
 ## Optional: clm-mem memory bridge
 
@@ -515,19 +516,18 @@ tasks`); status markers below reflect what actually landed on `main`.
     directory itself carries a legacy name outside git's control
     (`…/Projects/Tracker-2cdb178b`); flag to whoever owns that.
 
-### Housekeeping while you're in here
+### Housekeeping while you're in here (resolved)
 
-* `AGENTS.md` §1 still says "5 signals" and "125 tests" — both stale (there are
-  seven custom signals and ~195 collected tests now); its §2 install line still
-  points at `github.com/glassresistor/clm-mem.git` while requirements.txt pins
-  `GentianLine/clm-mem@main`.
-* `INTEGRATION.md` still tells you to `pip install clm-mem` (a bare name that
-  isn't on PyPI) and links the harness + session-API spec at the
-  `glassresistor/clm-mem` repo and its `spike/session-api` branch, while
-  requirements.txt pins `GentianLine/clm-mem@main`; on that remote the contract
-  lives on **both** `main` and a still-open `spike/session-api` branch (both
-  updated Oct 25 2026), so the "pin the branch until it lands" advice in its
-  served-mode section is stale. Its "Roadmap ideas" also still list webhook
-  fan-out as not-yet-built (true on main, but a branch exists).
-* The README badge URLs carry an `OWNER` placeholder — replace with the real
-  GitHub account/org once the repo is hosted.
+* `AGENTS.md` §1 refreshed: seven custom signals, ~195 collected tests
+  (183 passing + 12 skipped served-mode); §2 installs clm-mem from
+  `GentianLine/clm-mem@main` through the direct-reference in requirements.txt
+  instead of the old `glassresistor/clm-mem.git` URL (which only survives as a
+  rename redirect).
+* `INTEGRATION.md` refreshed: no bare `pip install clm-mem` advice (it isn't on
+  PyPI — use the pinned git direct-reference); harness/spec links point at
+  `GentianLine/clm-mem` and its `main`, where the explicit-session-API contract
+  has landed (`spike/session-api` remains as a historical branch, so the old
+  "pin the branch until it lands" advice is gone); "Roadmap ideas" now flags
+  the webhook fan-out as existing on a worker branch awaiting integration.
+* README badge URLs carry the real host `GentianLine/tokamak` — the repo is
+  hosted and CI runs there, so the `OWNER` placeholder is gone.

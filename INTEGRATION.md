@@ -1,19 +1,26 @@
 # clm-mem Integration — memory for a swarm that works in git
 
-This repo can optionally be wired to [clm-mem](https://github.com/glassresistor/clm-mem),
+This repo can optionally be wired to
+[clm-mem](https://github.com/GentianLine/clm-mem),
 a zero-training long/short-term memory harness for open chat models (inspired by
 Context Language Models, arXiv:2609.37725). The bridge lives in
 `tokamak/memory.py` and never activates unless you opt it in — the dependency is
-lazy-imported, so a checkout without `pip install clm-mem` still runs everything.
+lazy-imported, so a checkout where clm-mem simply isn't installed still runs
+everything.
 
 ## The served-mode contract (explicit session API)
 
-Served mode speaks the **explicit session API** from the clm-mem branch
-[`spike/session-api`](https://github.com/glassresistor/clm-mem/tree/spike/session-api)
+Served mode speaks the **explicit session API** that now lives on
+`GentianLine/clm-mem` [`main`](https://github.com/GentianLine/clm-mem/tree/main)
 (spec: that repo's `README.md` "Client contract" + `clm_mem/remote.py`; full
-migration plan: `docs/library-migration.md`). Pin the branch (editable
-install / track the branch) until it lands on `main`; the bridge skips its
-served-mode tests when the installed SDK predates `open()`/`turn()`.
+migration plan: `docs/library-migration.md`). The contract **has landed** — the
+original spike branch (`spike/session-api`) remains open as a historical
+branch, but its content is merged onto `main`, and that is what
+`requirements.txt` pins via the PEP 508 direct-reference
+(`clm-mem @ git+https://github.com/GentianLine/clm-mem.git@main`), so tracking
+`main` is sufficient; no branch-pinning or editable install is needed anymore.
+The bridge still skips its served-mode tests when the installed SDK predates
+`open()`/`turn()` (e.g. a stale shared site-packages dir).
 
 What changed for consumers:
 
@@ -55,7 +62,9 @@ re-reading every event row; the harness decides durability for them.
 ## Enable it
 
 ```bash
-pip install clm-mem            # optional dependency (openai client only)
+# clm-mem is not on PyPI — pull it from GitHub via pip's PEP 508 direct-reference:
+pip install "git+https://github.com/GentianLine/clm-mem.git@main"
+# (or simply `pip install -r requirements.txt`, which pins exactly that)
 ```
 
 Then in `config/settings.py` (`TOKAMAK_MEMORY`, defaults shown):
@@ -177,8 +186,10 @@ def remember_context(sender, ticket, old_state, new_state, **kwargs):
 
 * Expose tokamak REST actions as clm-mem MCP tools (`clm-mem serve` is already
   an MCP server; add tokamak's transition/estimate endpoints to its tool list).
-* Webhook fan-out from EventLog feeding the bridge in one place (pairs with
-  the `automation-webhooks` task).
+* **Webhook fan-out** from EventLog feeding the bridge in one place (pairs with
+  the `automation-webhooks` task): not built on `main`, but a worker branch
+  (`agent/adm1-automation-webhooks`) already carries an implementation
+  (`tokamak/webhooks.py` + tests) awaiting integration — see README TODO.
 * A nightly job: `memory_sync --replay-all` then archive-search stats into
   the admin event-analytics view.
 
