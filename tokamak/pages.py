@@ -24,7 +24,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from . import services
-from .models import EventLog, Project, Ticket
+from .models import Comment, EventLog, Project, Ticket
 
 
 @ensure_csrf_cookie
@@ -47,6 +47,14 @@ def ticket_detail(request, pk):
         return ticket_detail_action(request, ticket)
 
     events = list(ticket.events.order_by('-created_at')[:30])
+    thread = services.ticket_thread(ticket, include_deleted=True)
+    editing = None
+    wanted = request.GET.get('edit')
+    if wanted:
+        editing = next(
+            (c for c in thread if str(c.pk) == wanted and not c.deleted),
+            None,
+        )
     blocking = [
         b
         for b in ticket.incoming_blockers.select_related('source')
@@ -56,7 +64,11 @@ def ticket_detail(request, pk):
         'ticket': ticket,
         'project': ticket.project,
         'events': events,
+        'error_param': request.GET.get('error'),
         'sessions': ticket.memory_sessions.order_by('-started_at')[:5],
+        'comments': thread,
+        'removed_comments': sum(1 for c in thread if c.deleted),
+        'editing_comment': editing,
         'blocking': blocking,
         'blocked_by_me': [
             b.target for b in ticket.outgoing_blockers.select_related('target')
@@ -85,6 +97,22 @@ def ticket_detail_action(request, ticket):
         elif action == 'remove_blocker':
             source = get_object_or_404(Ticket, pk=request.POST.get('by'))
             services.remove_blocker(source, ticket)
+        elif action == 'add_comment':
+            services.add_comment(
+                ticket,
+                request.POST.get('body', ''),
+                author=request.POST.get('author', ''),
+            )
+        elif action == 'edit_comment':
+            comment = get_object_or_404(
+                Comment, pk=request.POST.get('comment'), ticket=ticket
+            )
+            services.edit_comment(comment, request.POST.get('body', ''))
+        elif action == 'delete_comment':
+            comment = get_object_or_404(
+                Comment, pk=request.POST.get('comment'), ticket=ticket
+            )
+            services.delete_comment(comment)
         elif action == 'set_epic':
             epic_name = (request.POST.get('epic') or '').strip()
             if epic_name:

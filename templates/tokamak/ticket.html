@@ -99,6 +99,65 @@
     {% if ticket.description %}{{ ticket.description|md_render }}{% else %}<em>No description yet.</em>{% endif %}
   </div>
 
+  <div class="thread">
+    <h3>Thread
+      <span class="t-count">{{ comments|length }}</span>
+      {% if removed_comments %}<span class="t-removed">{{ removed_comments }} removed</span>{% endif %}
+    </h3>
+
+    {% if comments %}
+      <ul class="comments">
+        {% for c in comments %}
+          <li class="comment{% if c.is_system %} sys{% endif %}{% if c.deleted %} removed{% endif %}{% if editing_comment and editing_comment.pk == c.pk %} editing{% endif %}">
+            <div class="c-head">
+              <span class="c-author">{{ c.author|default:"someone" }}</span>
+              <span class="c-when">{{ c.created_at|date:"Y-m-d H:i" }}</span>
+              {% if c.is_system %}<span class="chip kind">⚙ system</span>{% endif %}
+            </div>
+            {% if c.deleted %}
+              <div class="c-body removed">{{ c.visible_body }}</div>
+            {% else %}
+              <div class="c-body rendered-md">{{ c.body|md_render }}</div>
+            {% endif %}
+            {% if not c.deleted %}
+              <div class="c-actions">
+                <a class="btn ghost" href="/tickets/{{ ticket.id }}/?edit={{ c.pk }}">✎ edit</a>
+                <form method="post" class="inline-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_comment">
+                  <input type="hidden" name="comment" value="{{ c.pk }}">
+                  <button type="submit" class="btn ghost">✕ remove</button>
+                </form>
+              </div>
+            {% endif %}
+            {% if editing_comment and editing_comment.pk == c.pk %}
+              <form method="post" class="inline-form edit-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="edit_comment">
+                <input type="hidden" name="comment" value="{{ c.pk }}">
+                <textarea name="body" rows="4" data-md-editor>{{ editing_comment.body }}</textarea>
+                <button type="submit">Save edit</button>
+                <a class="btn ghost" href="/tickets/{{ ticket.id }}/">cancel</a>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No comments yet — start the thread below.</p>
+    {% endif %}
+
+    {% if not editing_comment %}
+      <form method="post" class="inline-form new-comment">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_comment">
+        <textarea name="body" rows="4" placeholder="What happened on this ticket? Markdown, #123 refs." data-md-editor></textarea>
+        <label>as <input type="text" name="author" placeholder="your handle (optional)"></label>
+        <button type="submit">Post comment</button>
+      </form>
+    {% endif %}
+  </div>
+
   {% if sessions %}
     <h3>Memory sessions</h3>
     <ul class="timeline">

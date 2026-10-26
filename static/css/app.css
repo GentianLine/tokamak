@@ -419,3 +419,35 @@ textarea[data-md-editor] { font-family: var(--mono); font-size: 13.5px;
 .block-picker .picker { display: inline-flex; flex-wrap: wrap; gap: 3px; align-items: center; margin-left: 6px; font-size: 12px; color: var(--muted); }
 .block-picker .cand { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .muted { color: var(--muted); }
+
+/* ---------------------------------------------------------------------
+ * Ticket threads (thr1) — append-only lane per AGENTS.md.
+ * The conversation around a ticket: people's comments carry a purple
+ * rule, automation's carry amber, removed ones fade to a tombstone.
+ * Never rename existing classes.
+ * ------------------------------------------------------------------- */
+.thread { margin: 18px 0 8px; }
+.thread h3 { display: flex; align-items: baseline; gap: 8px; }
+.thread .t-count { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.thread .t-removed { font-size: 12px; color: var(--danger); }
+ul.comments { list-style: none; margin: 0; padding: 0; }
+.comment { background: var(--panel2); border-left: 3px solid var(--line);
+  border-radius: var(--radius); padding: 8px 12px; margin: 0 0 8px; }
+.comment:hover { border-left-color: var(--accent); }
+.comment.sys { border-left-color: var(--warn); }
+.comment.removed { opacity: .55; }
+.comment.editing { border-left-color: var(--accent); }
+.comment .c-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.comment .c-author { font-weight: 600; font-size: 13px; color: var(--text); }
+.comment .c-when { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.chip.kind { background: rgba(227, 179, 65, .15); color: var(--warn); border-color: transparent; }
+.comment .c-body { font-size: 14px; line-height: 1.5; }
+.comment .c-body.removed { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.comment .c-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+.btn.ghost:hover { color: var(--text); border-color: var(--accent); text-decoration: none; }
+.edit-form textarea, .new-comment textarea { flex: 1 1 100%; min-height: 74px; }
+.new-comment { margin-top: 10px; }
+@media (max-width: 900px) {
+  .comment { padding: 6px 10px; }
+}
