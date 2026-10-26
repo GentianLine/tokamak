@@ -152,6 +152,17 @@ TOKAMAK = {
     'FIBONACCI_POINTS': [1, 2, 3, 5, 8, 13, 21],
 }
 
+# --- Ticket threads -------------------------------------------------------
+# Discussion layer around tickets (tokamak/services.py::add_comment and
+# friends). Human comments are always on; the automatic note-taking below is
+# opt-in so the default signal graph stays exactly as AGENTS.md §1 describes.
+TOKAMAK_THREADS = {
+    # Leave a system comment whenever a blocker edge appears or clears.
+    'auto_comment_blockers': False,
+    # Upper bound on a single comment body (chars).
+    'max_body_length': 4096,
+}
+
 # --- clm-mem memory bridge -------------------------------------------------
 # Optional integration with https://github.com/glassresistor/clm-mem (see
 # INTEGRATION.md). Off by default; the dependency is only needed when enabled.

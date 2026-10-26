@@ -42,6 +42,24 @@ blocker_added = django.dispatch.Signal()
 #               reason ('manual' | 'accepted' | 'cycle')
 blocker_removed = django.dispatch.Signal()
 
+# --- Thread signals (tokamak/services.py::add_comment/edit_comment/
+# delete_comment)
+# The thread is the conversation around a ticket; like every other mutation,
+# it flows through the service layer so UI, REST and automation all fire the
+# same three events.
+
+# Fired after a comment lands on a ticket thread (human or system).
+#    providing: comment
+comment_added = django.dispatch.Signal()
+
+# Fired after a live comment's body is edited.
+#    providing: comment, old_body, new_body
+comment_updated = django.dispatch.Signal()
+
+# Fired after a comment is soft-deleted (row kept, body hidden).
+#    providing: comment, reason ('manual' | ...)
+comment_removed = django.dispatch.Signal()
+
 
 def register_receivers():
     """Connect the built-in receivers. Called from AppConfig.ready()."""
@@ -126,6 +144,45 @@ def register_receivers():
             },
         )
 
+    def log_comment_added(sender, comment, **kwargs):
+        from .models import EventLog
+
+        EventLog.objects.create(
+            name='comment.added',
+            ticket=comment.ticket,
+            project=comment.ticket.project,
+            payload={
+                'comment': comment.pk,
+                'author': comment.author,
+                'kind': comment.kind,
+                'body_head': comment.body[:200],
+            },
+        )
+
+    def log_comment_updated(sender, comment, old_body='', new_body='', **kwargs):
+        from .models import EventLog
+
+        EventLog.objects.create(
+            name='comment.updated',
+            ticket=comment.ticket,
+            project=comment.ticket.project,
+            payload={
+                'comment': comment.pk,
+                'old_head': old_body[:200],
+                'new_head': new_body[:200],
+            },
+        )
+
+    def log_comment_removed(sender, comment, reason='manual', **kwargs):
+        from .models import EventLog
+
+        EventLog.objects.create(
+            name='comment.removed',
+            ticket=comment.ticket,
+            project=comment.ticket.project,
+            payload={'comment': comment.pk, 'reason': reason},
+        )
+
     def log_blocker_removed(sender, blocker, reason='manual', **kwargs):
         from .models import EventLog
 
@@ -164,6 +221,9 @@ def register_receivers():
     )
     ticket_created.connect(log_ticket_created, dispatch_uid='log_ticket_created')
     project_updated.connect(log_project_updated, dispatch_uid='log_project_updated')
+    comment_added.connect(log_comment_added, dispatch_uid='log_comment_added')
+    comment_updated.connect(log_comment_updated, dispatch_uid='log_comment_updated')
+    comment_removed.connect(log_comment_removed, dispatch_uid='log_comment_removed')
 
     # -- live clm-mem mirror (opt-in; receiver no-ops unless TOKAMAK_MEMORY
     #    says mirror='live', so connecting unconditionally is safe) ----------
