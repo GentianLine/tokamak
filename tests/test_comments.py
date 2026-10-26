@@ -500,3 +500,49 @@ def test_ticket_detail_post_delete_comment(client):
     comment.refresh_from_db()
     assert comment.deleted is True
     assert services.ticket_thread(ticket) == []
+
+
+# ---------------------------------------------------------------------------
+# Admin surface (read-only)
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def admin_client(db):
+    """A logged-in Django admin client."""
+    from django.contrib.auth.models import User
+    from django.test import Client
+
+    User.objects.create_superuser(
+        username='root', password='pw', email='root@example.com'
+    )
+    login = Client()
+    login.login(username='root', password='pw')
+    return login
+
+
+@pytest.mark.django_db
+def test_comment_admin_lists_threads(admin_client):
+    """The admin changelist shows comments with author/kind/deleted columns."""
+    project = make_project('Adm1')
+    ticket = services.create_ticket(project, name='Admin view')
+    comment = services.add_comment(ticket, 'visible to admins', author='ana')
+
+    resp = admin_client.get('/admin/tokamak/comment/')
+    assert resp.status_code == 200
+    body = resp.content.decode()
+    assert 'visible to admins' in body or str(comment.pk) in body
+    assert 'ana' in body
+
+
+@pytest.mark.django_db
+def test_comment_admin_never_writes(admin_client):
+    """Browsing the admin leaves comments and their audit rows untouched."""
+    project = make_project('Adm2')
+    ticket = services.create_ticket(project, name='Frozen by admin')
+    comment = services.add_comment(ticket, 'untouched', author='ana')
+    before_comments = Comment.objects.count()
+    before_events = EventLog.objects.filter(name__startswith='comment.').count()
+
+    admin_client.get('/admin/tokamak/comment/')
+    assert Comment.objects.count() == before_comments
+    assert EventLog.objects.filter(name__startswith='comment.').count() == before_events
+    assert Comment.objects.get(pk=comment.pk).body == 'untouched'
