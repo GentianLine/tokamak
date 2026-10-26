@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .comments_api import project_thread_stats
 from .memory_views import memory_note, memory_recall, memory_status
 from .reorder_views import reorder_ticket_view
 from .sessions_views import (
@@ -24,4 +25,10 @@ urlpatterns = list(router.urls) + [
     path('sessions/<int:pk>/snapshot/', session_snapshot, name='session-snapshot'),
     # drag-reorder within a display group (tokamak/reorder.py)
     path('reorder/', reorder_ticket_view, name='reorder-ticket'),
+    # ticket threads: discussion health for one project (tokamak/comments_api)
+    path(
+        'projects/<int:pk>/threads/',
+        project_thread_stats,
+        name='project-thread-stats',
+    ),
 ]
