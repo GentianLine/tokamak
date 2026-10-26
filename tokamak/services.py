@@ -16,8 +16,11 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from .models import Project, Ticket
+from .models import Comment, Project, Ticket
 from .signals import (
+    comment_added,
+    comment_removed,
+    comment_updated,
     project_updated,
     ticket_created,
     ticket_estimated,
@@ -793,3 +796,139 @@ def epic_rollup(project):
             }
         )
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Ticket threads
+#
+# A thread is the conversation that happens around a ticket: what an estimate
+# meant, why a blocker matters, who picked up what. Comments are the unit of
+# the thread and — like every other write in this app — they are created,
+# edited and removed only through the functions below, so the three
+# `comment.*` signals fire identically from the detail page, the REST API,
+# the admin or an automated processor.
+#
+# Deletion is *soft*: the row survives and only its body is hidden
+# (`Comment.visible_body`). That keeps the audit trail honest — a removed
+# comment still shows as a tombstone plus its `comment.removed` EventLog row
+# — without the cascade problem a hard delete would create (see TODO
+# `delete-ticket-service` for the harder question of deleting tickets).
+#
+# Bodies are markdown, rendered by tokamak/markdown.py at display time; the
+# service layer stores exactly what it was given (minus surrounding padding)
+# so rendering stays a read-model concern.
+# ---------------------------------------------------------------------------
+@transaction.atomic
+def add_comment(ticket, body, author='', kind=Comment.Kind.HUMAN):
+    """Post a comment on ``ticket``'s thread; fires ``comment_added``.
+
+    ``kind`` separates people from automation ('system' comments are written
+    by receivers such as ``tokamak/thread_automation.py`). An empty body is
+    refused rather than silently dropped, because a thread with holes in it
+    is worse than no thread."""
+    if not (body or '').strip():
+        raise ValidationError({'body': 'A comment needs some words.'})
+    limit = _thread_setting('max_body_length', 4096)
+    if len(body) > limit:
+        raise ValidationError({'body': f'Comment is longer than {limit} chars.'})
+    if kind not in Comment.Kind.values:
+        raise ValidationError({'kind': f'Unknown comment kind: {kind}'})
+
+    comment = Comment.objects.create(
+        ticket=ticket,
+        body=body.strip(),
+        author=(author or '').strip()[:200],
+        kind=kind,
+    )
+    comment_added.send(sender=Comment, comment=comment)
+    return comment
+
+
+@transaction.atomic
+def edit_comment(comment, body):
+    """Rewrite a live comment; fires ``comment_updated``.
+
+    Removed comments are frozen: history stays readable even after someone
+    cleans up a thread."""
+    if comment.deleted:
+        raise ValidationError({'comment': 'A removed comment cannot be edited.'})
+    if not (body or '').strip():
+        raise ValidationError({'body': 'A comment needs some words.'})
+    limit = _thread_setting('max_body_length', 4096)
+    if len(body) > limit:
+        raise ValidationError({'body': f'Comment is longer than {limit} chars.'})
+
+    old_body = comment.body
+    comment.body = body.strip()
+    comment.save(update_fields=['body', 'updated_at'])
+    comment_updated.send(
+        sender=Comment,
+        comment=comment,
+        old_body=old_body,
+        new_body=comment.body,
+    )
+    return comment
+
+
+@transaction.atomic
+def delete_comment(comment, reason='manual'):
+    """Soft-delete a comment: the row stays, the body goes dark.
+
+    Fires ``comment_removed`` and an EventLog row (via the audit receiver),
+    so removal is itself auditable. Idempotent — removing twice is a no-op."""
+    if comment.deleted:
+        return comment
+    comment.deleted = True
+    comment.deleted_at = timezone.now()
+    comment.save(update_fields=['deleted', 'deleted_at', 'updated_at'])
+    comment_removed.send(sender=Comment, comment=comment, reason=reason)
+    return comment
+
+
+def ticket_thread(ticket, include_deleted=False):
+    """The live thread of ``ticket``, oldest first.
+
+    Read model only. Deleted comments are excluded unless asked for (the
+    detail page shows them as tombstones)."""
+    qs = Comment.objects.filter(ticket=ticket)
+    if not include_deleted:
+        qs = qs.filter(deleted=False)
+    return list(qs.order_by('created_at', 'id'))
+
+
+def comment_stats(project):
+    """Discussion health for a project (derived, never stored).
+
+    Answers the planning question a board cannot: how much of the backlog is
+    actually *talking* — and which live tickets have no human discussion at
+    all (the quiet backlog: work nobody has touched with words)."""
+    comments = Comment.objects.filter(ticket__project=project)
+    live = comments.filter(deleted=False)
+    per_ticket = {}
+    for comment in live:
+        row = per_ticket.setdefault(
+            comment.ticket_id, {'all': 0, 'human': 0, 'system': 0}
+        )
+        row['all'] += 1
+        row[comment.kind] = row.get(comment.kind, 0) + 1
+
+    quiet = []
+    for ticket in project.tickets.exclude(
+        state__in=(Ticket.State.ACCEPTED, Ticket.State.REJECTED)
+    ):
+        if not per_ticket.get(ticket.pk, {}).get('human', 0):
+            quiet.append(ticket)
+
+    return {
+        'comments': live.count(),
+        'removed': comments.filter(deleted=True).count(),
+        'system': live.filter(kind=Comment.Kind.SYSTEM).count(),
+        'tickets_with_threads': sum(1 for row in per_ticket.values() if row['all']),
+        'quiet_backlog': quiet,
+        'quiet_backlog_count': len(quiet),
+    }
+
+
+def _thread_setting(key, default):
+    cfg = getattr(settings, 'TOKAMAK_THREADS', {}) or {}
+    return cfg.get(key, default)

@@ -57,6 +57,10 @@ class EventLogAdmin(admin.ModelAdmin):
 # merge-friendly; importing it registers all three. See blockers_admin.py.
 from .blockers_admin import BlockerAdmin, EpicAdmin, MilestoneAdmin  # noqa: E402,F401
 
+# Ticket threads get their own read-only admin in a separate module; importing
+# it registers CommentAdmin while the registrations above stay untouched.
+from .comments_admin import CommentAdmin  # noqa: E402,F401
+
 # The analytics proxy carries the aggregated event dashboard. Registering
 # it here keeps every admin surface discoverable from one module while the
 # existing registrations above stay byte-identical (task note: no behavior

@@ -303,6 +303,56 @@ class EventLog(models.Model):
         return f'{self.name} @ {self.created_at:%Y-%m-%d %H:%M}'
 
 
+class Comment(models.Model):
+    """One entry in a ticket's discussion thread.
+
+    A thread is the conversation that happens *around* a ticket: why it was
+    estimated this way, what a blocker really means, who picked up what.
+    Comments are append-only history — deleting one is a soft delete (the row
+    stays, the body is hidden) so the timeline never develops a hole, and the
+    ``kind`` column separates people from the automation that writes through
+    ``tokamak/services.py::add_comment``.
+
+    There is no auth layer yet (see TODO `auth-permissions`), so ``author``
+    is a free-form display handle rather than a user relation; when auth
+    lands, it becomes the username of the verified account and this column
+    keeps working as the historical label.
+    """
+
+    class Kind(models.TextChoices):
+        HUMAN = 'human', 'Human'
+        SYSTEM = 'system', 'System'
+
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='comments'
+    )
+    author = models.CharField(max_length=200, blank=True)
+    body = models.TextField()
+    kind = models.CharField(max_length=10, choices=Kind.choices, default=Kind.HUMAN)
+    deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at', 'id']
+
+    def __str__(self):
+        who = self.author or ('system' if self.kind == self.Kind.SYSTEM else 'someone')
+        return f'{who} on #{self.ticket_id}: {self.body[:40]}...'
+
+    @property
+    def is_system(self):
+        return self.kind == self.Kind.SYSTEM
+
+    @property
+    def visible_body(self):
+        """What the UI may show: the body, or a tombstone note if deleted."""
+        if not self.deleted:
+            return self.body
+        return '[removed]'
+
+
 class MemorySession(models.Model):
     """One clm-mem chat/memory session attached to a ticket attempt.
 

@@ -89,6 +89,34 @@ must be estimated before it can be accepted.
   every attached ticket is accepted. Membership audits as
   `ticket.milestone_changed`.
 
+### Ticket threads
+
+A thread is the conversation that happens around a ticket: what an estimate
+meant, why a blocker matters, who picked up what. Comments are markdown (the
+same renderer and tracker refs as descriptions) and, like every other write,
+flow through the service layer (`services.add_comment` / `edit_comment` /
+`delete_comment`), firing `comment_added` / `comment_updated` /
+`comment_removed` into `EventLog` as `comment.added` / `.updated` / `.removed`.
+
+* **Soft delete by design**: removing a comment hides its body but keeps the
+  row, so the timeline never develops a hole — the detail page shows a
+  `[removed]` tombstone and counts removals in the header. (Hard-deleting
+  tickets is still unserviced; see TODO `delete-ticket-service`.)
+* **Human vs machine**: `Comment.kind` separates people from automation. Opt-in
+  receivers in `tokamak/thread_automation.py` let the board take notes on
+  itself — a system comment when a blocker edge appears, and how it cleared
+  (`resolved manually` / `delivered`) when it goes away. Gated by
+  `TOKAMAK_THREADS['auto_comment_blockers']`, off by default so the baseline
+  signal graph stays byte-identical; receivers are best-effort and never raise.
+* **Discussion health**: `services.comment_stats(project)` reports live vs
+  removed comments and the **quiet backlog** — live tickets nobody has talked
+  about (a system-only thread still counts as silence). Read at
+  `GET /api/projects/<id>/threads/`.
+
+The ticket detail page hosts the human surface: post a comment, edit inline via
+`?edit=<comment-id>`, or remove one; bodies use the markdown editor widget.
+Authors are free-form handles until auth lands (TODO `auth-permissions`).
+
 ## Sprint cutoff estimation
 
 `tokamak.services.estimate_cutoff(project)`:
@@ -161,6 +189,9 @@ All mutations (UI click, REST call, admin, management command) go through
 | `project_updated`         | `project`                            |
 | `blocker_added`           | `blocker`                            |
 | `blocker_removed`         | `blocker, reason` (`manual` / `accepted` / `cycle`) |
+| `comment_added`           | `comment`                            |
+| `comment_updated`         | `comment, old_body, new_body`        |
+| `comment_removed`         | `comment, reason`                    |
 
 Built-in receivers (`tokamak/automation.py`) show the pattern:
 
@@ -177,6 +208,12 @@ custom signal, forwarding each event into clm-mem only when
 clm-mem sessions as tickets enter/leave the active lanes; gated by
 `TOKAMAK_MEMORY['ticket_sessions']`). Both are best-effort: they never raise, so
 a broken or absent optional dependency cannot fail a board write.
+
+`tokamak/thread_automation.py` adds two more dormant receivers on the same
+carve: **auto_comment_blocker** and **auto_comment_unblock**, which leave system
+comments on a blocked ticket when an edge appears or clears. They are gated by
+`TOKAMAK_THREADS['auto_comment_blockers']` (off by default) and, like the memory
+receivers, write through the service layer rather than touching the ORM.
 
 Every signal is also mirrored into `EventLog` (`/api/events/`) so automations
 can poll or replay history; swapping those audit rows onto a webhook fan-out is
@@ -236,6 +273,10 @@ GROUPS  CRUD   /api/epics/?project=&ticket=      epic grouping management
         CRUD   /api/milestones/?project=         milestone management
         GET  /api/events/?project=1&name=ticket.state_changed
 ORDER   POST   /api/reorder/                     {"ticket": id, "position": n}
+THREAD  CRUD   /api/comments/?ticket=&author=&kind=  thread read/manage (DELETE is soft)
+        GET    /api/tickets/<id>/thread/            live comments + removed count
+        POST   /api/tickets/<id>/comment/           {"body": "...", "author": optional}
+        GET    /api/projects/<id>/threads/          discussion health + quiet backlog
 MEMORY  GET    /api/memory/status/?project=<id>  bridge config + live snapshot
         POST   /api/memory/recall/               {"project":1,"query":"...","reinject_block":null}
         POST   /api/memory/note/                 {"project":1,"text":"fact to remember"}
@@ -285,17 +326,20 @@ pytest             # run the suite
 ```
 
 * **Tests** — `pytest` (via pytest-django, config in `pytest.ini`): currently
-  **195 collected / 183 passing + 12 skipped** (the skips are the served-mode
+  **223 collected / 211 passing + 12 skipped** (the skips are the served-mode
   clm-mem suite, which needs the installed SDK's explicit session API). Coverage:
   signal payloads and workflow validation (incl. rejected→started recovery and
   cross-project assign guards), velocity/cutoff math, burndown series plus the
   component's SVG geometry, the admin event-analytics dashboard (query bounds,
   zero-state, read-only), every REST action, markdown rendering plus the
   preview/suggest endpoints and creation pages, drag-reorder, ticket detail POST
-  flows for blockers/epics/milestones, memory mirroring/recall and the
+  flows for blockers/epics/milestones, ticket threads (soft delete, quiet
+  backlog, opt-in blocker note-taking, REST + detail-page POSTs), memory
+  mirroring/recall and the
   ticket-session lifecycle, and driving the Unicorn board component directly
   (add/estimate/move_to incl. partial-walk errors). Per-area test files:
-  `test_blockers.py` (26), `test_markdown.py` (19), `test_burndown.py` (16),
+  `test_blockers.py` (26), `test_comments.py` (28), `test_markdown.py` (19),
+  `test_burndown.py` (16),
   `test_admin_analytics.py` (16), `test_memory.py` (15), `test_ticket_sessions.py`
   (13), `test_reorder.py` (13), `test_memory_served.py` (12),
   `test_services_edge.py` (11), `test_creation_pages.py` (11),
@@ -509,7 +553,15 @@ tasks`); status markers below reflect what actually landed on `main`.
 10. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
-11. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
+11. **threads-next** *(lane: pages + services; med; spike exists on
+    `spike/ticket-comments`, never merged)* — the discussion layer is already
+    delivered there (Comment model with soft delete, service functions,
+    three signals, REST surface, detail-page UI, 26 tests). Before merging,
+    decide: real author identity once auth lands (`auth-permissions`), whether
+    nested replies matter or a flat per-ticket thread is enough, board badges
+    for comment counts, and whether `kind='system'` notes should be excluded
+    from the quiet-backlog statistic entirely.
+12. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
     playbook leaves until humans confirm (`git worktree list`). The outer sandbox

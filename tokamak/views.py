@@ -33,6 +33,7 @@ from rest_framework.response import Response
 
 from . import services
 from .blockers_api import register_blocker_routes
+from .comments_api import register_comment_routes
 from .models import Blocker, EventLog, Iteration, Project, Ticket
 
 
@@ -312,6 +313,7 @@ class EventLogViewSet(viewsets.ReadOnlyModelViewSet):
 def build_api_router():
     router = routers.DefaultRouter()
     register_blocker_routes(router, TicketViewSet)
+    register_comment_routes(router, TicketViewSet)
     router.register('projects', ProjectViewSet, basename='project')
     router.register(
         'projects/(?P<project_pk>[^/.]+)/iterations',
