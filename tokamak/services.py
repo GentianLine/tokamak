@@ -13,7 +13,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import Project, Ticket
@@ -555,6 +555,39 @@ def _reachable(src_pk, dst_pk, project_id):
         seen.update(new_frontier)
         frontier = new_frontier
     return False
+
+
+@transaction.atomic
+def delete_ticket(ticket, *, user=None):
+    """Remove a ticket through the service layer (the board's delete button
+    and ``DELETE /api/tickets/<pk>/`` share this path).
+
+    Inside one transaction: every blocker edge touching the ticket is cleared
+    first — each audited as ``blocker_removed`` with reason ``deleted``, so
+    consumers learn about the silent CASCADE they would otherwise have eaten.
+    Then ``ticket_deleted`` fires while the instance is still readable (the
+    audit receiver writes the ``ticket.deleted`` row), and finally the row —
+    and with it any memory sessions attached to it — goes away.
+
+    The audit trail survives: ``EventLog.ticket`` is SET_NULL, so rows about
+    a deleted ticket persist with a null link plus their original payload.
+    Deleting whole projects still cascades un-audited — see the README
+    backlog (delete-ticket-service scope note).
+    """
+    from .models import Blocker
+    from .signals import blocker_removed, ticket_deleted
+
+    detached = []
+    for edge in Blocker.objects.filter(Q(source=ticket) | Q(target=ticket)):
+        edge.delete()
+        detached.append(edge)
+    for edge in detached:
+        blocker_removed.send(sender=Blocker, blocker=edge, reason='deleted')
+
+    ticket_deleted.send(sender=Ticket, ticket=ticket, user=user)
+    pk = ticket.pk
+    ticket.delete()
+    return pk
 
 
 @transaction.atomic
