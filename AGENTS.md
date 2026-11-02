@@ -19,14 +19,14 @@ Key files to know before touching anything:
 |---|---|---|
 | Models | `tokamak/models.py` | Project, Iteration, Ticket, EventLog |
 | Service layer (single source of truth) | `tokamak/services.py` | mutations + workflow rules + velocity/cutoff math |
-| Signal contract | `tokamak/signals.py` | seven custom signals (incl. the two blocker-graph ones); payload kwarg names are part of the public API |
+| Signal contract | `tokamak/signals.py` | eight custom signals (incl. the two blocker-graph ones and `ticket_deleted`); payload kwarg names are part of the public API |
 | Automation receivers | `tokamak/automation.py` | example processors; registered via AppConfig.ready() |
 | REST API | `tokamak/views.py`, `tokamak/api_urls.py` | DRF viewsets + action endpoints |
 | Reactive UI components | `tokamak/components/*.py` | UnicornViews: board, velocity, project_list |
 | Templates | `templates/unicorn/*.html`, `templates/tokamak/*.html` | component templates |
 | Client JS (drag & drop) | `static/js/board.js` | calls the Unicorn component; never touches DB directly |
 | Styles | `static/css/app.css` | plain CSS, no build step |
-| Tests | `tests/*` | pytest suite (~211 collected / 199 passing + 12 skipped served-mode): services+signals, forecast math, burndown, blockers, admin event analytics, REST, unicorn components, page renders, markdown, reorder, webhook fan-out, memory mirroring + ticket sessions |
+| Tests | `tests/*` | pytest suite (~218 collected / 206 passing + 12 skipped served-mode): services+signals, forecast math, burndown, blockers, admin event analytics, REST, unicorn components, page renders, markdown, reorder, webhook fan-out, deletion audit, memory mirroring + ticket sessions |
 
 Non-negotiable conventions (violating these breaks other agents' work):
 

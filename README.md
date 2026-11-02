@@ -79,8 +79,10 @@ must be estimated before it can be accepted.
   project-local edges, and an acyclic graph (a cycle would deadlock
   acceptance). A blocked ticket cannot be accepted until its blockers
   clear; **accepting** a blocker clears its edge automatically (reason
-  `accepted`), while a *rejected* blocker simply stops counting. Signals:
-  `blocker_added` / `blocker_removed`, mirrored into `EventLog`.
+  `accepted`), while a *rejected* blocker simply stops counting; deleting a
+  ticket through the service layer clears every edge touching it (reason
+  `deleted`). Signals: `blocker_added` / `blocker_removed`, mirrored into
+  `EventLog`.
 * **Epics** are lightweight per-project umbrellas (`Ticket.epic`);
   membership changes audit as `ticket.epic_changed`. The board header and
   ticket rows show epic badges with accepted/total rollups.
@@ -158,12 +160,13 @@ All mutations (UI click, REST call, admin, management command) go through
 | Signal                    | Payload                              |
 |---------------------------|--------------------------------------|
 | `ticket_created`          | `ticket`                             |
+| `ticket_deleted`          | `ticket, user`                       |
 | `ticket_state_changed`    | `ticket, old_state, new_state, user` |
 | `ticket_estimated`        | `ticket, old_points, new_points`     |
 | `ticket_iteration_changed`| `ticket, old_iteration, new_iteration` |
 | `project_updated`         | `project`                            |
 | `blocker_added`           | `blocker`                            |
-| `blocker_removed`         | `blocker, reason` (`manual` / `accepted` / `cycle`) |
+| `blocker_removed`         | `blocker, reason` (`manual` / `accepted` / `cycle` / `deleted`) |
 
 Built-in receivers (`tokamak/automation.py`) show the pattern:
 
@@ -241,7 +244,7 @@ Beyond the plain `Project`/`Iteration`/`Ticket` registrations and the read-only
 CRUD    /api/projects/                     POST/GET/PATCH/DELETE
         /api/projects/<id>/tickets/        create tickets in a project
         /api/projects/<id>/iterations/     create sprints
-        /api/tickets/<id>/                 read/update (state is immutable here)
+        /api/tickets/<id>/                 read/update/delete (DELETE = services.delete_ticket)
 ACTIONS POST /api/tickets/<id>/transition/ {"state": "started"}
         GET  /api/tickets/<id>/transition/ → allowed next states (discovery)
         POST /api/tickets/<id>/estimate/   {"points": 5}
@@ -307,7 +310,7 @@ pytest             # run the suite
 ```
 
 * **Tests** — `pytest` (via pytest-django, config in `pytest.ini`): currently
-  **211 collected / 199 passing + 12 skipped** (the skips are the served-mode
+  **218 collected / 206 passing + 12 skipped** (the skips are the served-mode
   clm-mem suite, which needs the installed SDK's explicit session API). Coverage:
   signal payloads and workflow validation (incl. rejected→started recovery and
   cross-project assign guards), velocity/cutoff math, burndown series plus the
@@ -323,7 +326,8 @@ delivery/idempotency, ticket detail POST
   (13), `test_reorder.py` (13), `test_webhooks.py` (13), `test_memory_served.py`
   (12),
   `test_services_edge.py` (11), `test_creation_pages.py` (11),
-  `test_md_views.py` (8), plus smaller suites for services/api/pages/components/
+  `test_md_views.py` (8), `test_delete_service.py` (7), plus smaller suites for
+  services/api/pages/components/
   forecast/ticket-pages. The suite lives under `tests/` as function-based
   modules; add new tests there rather than reintroducing class-based unittests.
 * **Lint** — `black --check .`, configured in `pyproject.toml`
@@ -453,9 +457,13 @@ and reference autocomplete: typing `#12…`, `ticket:…`, or `project:…` quer
   draggable; persisted via the reorder service and mirrored into `EventLog` as
   `ticket.reordered`, also exposed as `POST /api/reorder/`). Cross-group drags
   are ignored on purpose — workflow moves stay on the buttons/API.
-* **There is no delete service.** The board component's `delete_ticket` calls
-  `Ticket.objects.filter(pk=...).delete()` directly, bypassing the service layer
-  (no signals, no EventLog row). Flagged in TODO below.
+* **Deletion goes through the service layer now.** `services.delete_ticket`
+  clears every blocker edge touching the ticket (each audited as
+  `blocker.removed` with reason `deleted`), fires `ticket_deleted` while the
+  instance is still readable, then deletes the row. `EventLog.ticket` is
+  `SET_NULL`, so audit history outlives deleted tickets (rows persist with a
+  null link plus their payload). Deleting whole projects *still* cascades
+  un-audited — flagged in TODO below.
 * Transitioning a ticket to the state it already holds is a **silent no-op** —
   `transition_ticket` returns as soon as `new_state == old_state`, before the
   `ALLOWED_TRANSITIONS` check; re-assigning a ticket to the iteration it already
@@ -484,6 +492,7 @@ tasks`); status markers below reflect what actually landed on `main`.
 | clm-mem session-API migration | served mode speaks the explicit session API (`open()`/`turn()`/DELETE verbs); mirrored in INTEGRATION.md and `tokamak/memory.py` |
 | automation-webhooks | webhook fan-out receivers mirroring `EventLog` rows (`tokamak/webhooks.py`, config-driven, off by default, idempotent + HMAC/retries; cherry-picked from `25a88fe` via `integration/webhooks`, 13 tests) |
 | cutoff-surface-board | forecast chip strip in the board header (`templates/unicorn/board.html` + append-only css; agent/ora-cutoff-board, 3 tests) |
+| delete-ticket-service | `services.delete_ticket` + `ticket_deleted` signal, edges cleared with audit, surviving history via `EventLog.ticket` SET_NULL (migration 0004); REST destroy + board component path (agent/ora-delete-service, 7 tests) |
 
 ### Open backlog
 
@@ -503,27 +512,24 @@ tasks`); status markers below reflect what actually landed on `main`.
    currently *silently unlinked* when the target is deleted (existence rule).
    Decide and indicate it: keep the read-only rule but surface a stale-ref marker
    or an admin report of refs pointing at deleted rows.
-4. **delete-ticket-service** *(lane: services; med, new)* — introduce
-   `services.delete_ticket(ticket)` so board deletes stop bypassing the service
-   layer: fire a signal, write an EventLog row, and decide what should happen to
-   blocker edges that point *at* the deleted ticket (today they cascade away via
-   `on_delete=CASCADE` on both `Blocker.source` / `Blocker.target`, silently).
-   Deleting a project additionally wipes tickets/iterations/epics/milestones by
-   cascade with no audit trail at all.
-5. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
+4. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
    permission layer anywhere: every REST endpoint and page is open, admin is
    reachable for anyone who can reach it, `ALLOWED_HOSTS=['*']`, memory write
    routes are `csrf_exempt`. Add DRF permission classes + Django auth on the
    pages, or consciously document this as a single-user tool.
-6. **css-polish** *(lane: css; deprioritised)* — append-only readability
+5. **css-polish** *(lane: css; deprioritised)* — append-only readability
    improvements at the end of `static/css/app.css`; no class renames.
    Deprioritised because the design language was rewritten twice recently.
-7. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
+6. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
    as clm-mem MCP tools (`clm-mem serve` is already an MCP server at `/mcp` with
    a tool list); pairs with the webhook fan-out so one place feeds both.
-8. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
+7. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
+8. **project-delete-audit** *(lane: services; low)* — deleting a `Project`
+   still cascades tickets/iterations/epics/milestones (and their surviving
+   EventLog rows via the project FK) with no audit trail at all; mirror the
+   `delete_ticket` pattern into `services.delete_project`.
 9. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
