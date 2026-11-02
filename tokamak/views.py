@@ -242,6 +242,12 @@ class TicketViewSet(viewsets.ModelViewSet):
     def _user(self, request):
         return request.user if request.user.is_authenticated else None
 
+    def destroy(self, request, *args, **kwargs):
+        """DELETE goes through the service layer (edges + audit), not a bare
+        queryset delete."""
+        services.delete_ticket(self.get_object(), user=self._user(request))
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=['post'])
     def transition(self, request, pk=None):
         new_state = request.data.get('state')

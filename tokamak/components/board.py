@@ -240,7 +240,14 @@ class BoardView(UnicornView):
             self.error = _friendly(exc)
 
     def delete_ticket(self, ticket_id):
-        Ticket.objects.filter(pk=ticket_id).delete()
+        """Delete via the service layer: blocker edges clear with audit,
+        ``ticket.deleted`` lands in the EventLog (the old direct
+        ``Ticket.objects.filter(...).delete()`` bypassed all of it)."""
+        try:
+            services.delete_ticket(Ticket.objects.get(pk=ticket_id))
+            self.error = ''
+        except Ticket.DoesNotExist:
+            self.error = 'No such ticket.'
 
     # ------------------------------------------------------------------
     # Blockers (red-flag affordance): each mutation goes through services

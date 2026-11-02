@@ -290,8 +290,10 @@ class EventLog(models.Model):
     project = models.ForeignKey(
         Project, null=True, blank=True, on_delete=models.CASCADE, related_name='events'
     )
+    # SET_NULL (not CASCADE): deleting a ticket through the service layer
+    # must not erase its audit history — rows survive with a null link.
     ticket = models.ForeignKey(
-        Ticket, null=True, blank=True, on_delete=models.CASCADE, related_name='events'
+        Ticket, null=True, blank=True, on_delete=models.SET_NULL, related_name='events'
     )
     payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

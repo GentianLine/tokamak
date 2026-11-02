@@ -110,6 +110,7 @@ def register_fanout() -> None:
     from .signals import (
         project_updated,
         ticket_created,
+        ticket_deleted,
         ticket_estimated,
         ticket_iteration_changed,
         ticket_state_changed,
@@ -120,6 +121,7 @@ def register_fanout() -> None:
         ticket_estimated,
         ticket_iteration_changed,
         ticket_created,
+        ticket_deleted,
         project_updated,
     ):
         signal.connect(_fanout_receiver, dispatch_uid='tokamak_webhook_fanout')
@@ -133,6 +135,7 @@ SIGNAL_EVENT_NAMES = {
     'ticket_estimated': 'ticket.estimated',
     'ticket_iteration_changed': 'ticket.iteration_changed',
     'ticket_created': 'ticket.created',
+    'ticket_deleted': 'ticket.deleted',
     'project_updated': 'project.updated',
 }
 
