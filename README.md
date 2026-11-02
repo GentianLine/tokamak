@@ -310,7 +310,7 @@ pytest             # run the suite
 ```
 
 * **Tests** — `pytest` (via pytest-django, config in `pytest.ini`): currently
-  **218 collected / 206 passing + 12 skipped** (the skips are the served-mode
+  **223 collected / 211 passing + 12 skipped** (the skips are the served-mode
   clm-mem suite, which needs the installed SDK's explicit session API). Coverage:
   signal payloads and workflow validation (incl. rejected→started recovery and
   cross-project assign guards), velocity/cutoff math, burndown series plus the
@@ -326,8 +326,8 @@ delivery/idempotency, ticket detail POST
   (13), `test_reorder.py` (13), `test_webhooks.py` (13), `test_memory_served.py`
   (12),
   `test_services_edge.py` (11), `test_creation_pages.py` (11),
-  `test_md_views.py` (8), `test_delete_service.py` (7), plus smaller suites for
-  services/api/pages/components/
+  `test_md_views.py` (8), `test_delete_service.py` (7), `test_md_integrity.py`
+  (5), plus smaller suites for services/api/pages/components/
   forecast/ticket-pages. The suite lives under `tests/` as function-based
   modules; add new tests there rather than reintroducing class-based unittests.
 * **Lint** — `black --check .`, configured in `pyproject.toml`
@@ -420,7 +420,7 @@ schemes are blocked by markdown-it's link validation.
 | `#12` | link to ticket 12 — only when that ticket exists (existence rule) |
 | `ticket:12` / `tkt:12` | same as above |
 | `project:3` / `proj:3` | link to project 3 — existence rule |
-| `[Label](ticket:12)` | explicit reference — always links, even if missing |
+| `[Label](ticket:12)` | explicit reference — always links, even if missing; a dangling target is flagged (`class="tokamak-ref stale"` + explanatory title), never for bare refs |
 | `[Board](/projects/3/)` | ordinary markdown link to an internal path, unchanged |
 
 External links additionally get `rel="noopener nofollow external"` and open in a
@@ -493,6 +493,7 @@ tasks`); status markers below reflect what actually landed on `main`.
 | automation-webhooks | webhook fan-out receivers mirroring `EventLog` rows (`tokamak/webhooks.py`, config-driven, off by default, idempotent + HMAC/retries; cherry-picked from `25a88fe` via `integration/webhooks`, 13 tests) |
 | cutoff-surface-board | forecast chip strip in the board header (`templates/unicorn/board.html` + append-only css; agent/ora-cutoff-board, 3 tests) |
 | delete-ticket-service | `services.delete_ticket` + `ticket_deleted` signal, edges cleared with audit, surviving history via `EventLog.ticket` SET_NULL (migration 0004); REST destroy + board component path (agent/ora-delete-service, 7 tests) |
+| md-ref-integrity | stale markers on dangling explicit refs (`tokamak/markdown.py`, css flag; bare-ref existence rule kept by decision; agent/ora-md-integrity, 5 tests) |
 
 ### Open backlog
 
@@ -508,29 +509,25 @@ tasks`); status markers below reflect what actually landed on `main`.
    service fn for ticket description edits (none exists; `save_project` already
    covers projects). Must fire a signal (`ticket_updated`) and audit into
    `EventLog`.
-3. **md-ref-integrity** *(lane: markdown; low)* — dangling tracker references are
-   currently *silently unlinked* when the target is deleted (existence rule).
-   Decide and indicate it: keep the read-only rule but surface a stale-ref marker
-   or an admin report of refs pointing at deleted rows.
-4. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
+3. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
    permission layer anywhere: every REST endpoint and page is open, admin is
    reachable for anyone who can reach it, `ALLOWED_HOSTS=['*']`, memory write
    routes are `csrf_exempt`. Add DRF permission classes + Django auth on the
    pages, or consciously document this as a single-user tool.
-5. **css-polish** *(lane: css; deprioritised)* — append-only readability
+4. **css-polish** *(lane: css; deprioritised)* — append-only readability
    improvements at the end of `static/css/app.css`; no class renames.
    Deprioritised because the design language was rewritten twice recently.
-6. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
+5. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
    as clm-mem MCP tools (`clm-mem serve` is already an MCP server at `/mcp` with
    a tool list); pairs with the webhook fan-out so one place feeds both.
-7. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
+6. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
-8. **project-delete-audit** *(lane: services; low)* — deleting a `Project`
+7. **project-delete-audit** *(lane: services; low)* — deleting a `Project`
    still cascades tickets/iterations/epics/milestones (and their surviving
    EventLog rows via the project FK) with no audit trail at all; mirror the
    `delete_ticket` pattern into `services.delete_project`.
-9. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
+8. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
     playbook leaves until humans confirm (`git worktree list`). The outer sandbox
