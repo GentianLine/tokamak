@@ -162,8 +162,20 @@ def _process_inline(inline_tok: Token) -> None:
             if scheme:
                 is_project = scheme.group(1) in ('project', 'proj')
                 pk = int(scheme.group(2))
+                label = _project_label(pk) if is_project else _ticket_label(pk)
                 child.attrs['href'] = _url_for(is_project, pk)
-                child.attrs.setdefault('class', 'tokamak-ref')
+                if label is not None:
+                    child.attrs['class'] = 'tokamak-ref'
+                    child.attrs['title'] = label
+                else:
+                    # md-ref-integrity: deliberate references still link,
+                    # but a dangling target is flagged instead of silently
+                    # pointing at nothing.
+                    kind = 'project' if is_project else 'ticket'
+                    child.attrs['class'] = 'tokamak-ref stale'
+                    child.attrs['title'] = (
+                        f'{kind} {pk}: missing (deleted or never existed)'
+                    )
             elif href.startswith(('http://', 'https://')):
                 child.attrs.setdefault('target', '_blank')
                 child.attrs.setdefault('rel', 'noopener nofollow external')
