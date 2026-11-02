@@ -150,6 +150,16 @@ REST_FRAMEWORK = {
 TOKAMAK = {
     'DEFAULT_ITERATION_LENGTH_DAYS': 14,
     'FIBONACCI_POINTS': [1, 2, 3, 5, 8, 13, 21],
+    # Webhook fan-out receivers (tokamak/webhooks.py): off by default; set
+    # enabled=True plus targets to mirror EventLog entries outward.
+    'WEBHOOKS': {
+        'enabled': False,
+        'targets': [],  # e.g. [{'url': 'https://x/hook', 'events': ['ticket.*']}]
+        'timeout': 5.0,
+        'max_retries': 3,
+        'retry_backoff': 2.0,
+        'signing_secret': '',
+    },
 }
 
 # --- clm-mem memory bridge -------------------------------------------------
