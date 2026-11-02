@@ -101,7 +101,10 @@ must be estimated before it can be accepted.
   sprint later is added, plus a 0–1 confidence score
 
 Shown live in the velocity panel's "Backlog forecast" list (pessimistic cutoff
-and confidence included) and at `GET /api/projects/<id>/cutoff/`.
+and confidence included), as a compact chip strip under the board header
+(`.forecast-strip`: remaining points, estimated cutoff, pessimistic variant,
+confidence — same dict, rendered from `services.estimate_cutoff` by the board
+component), and at `GET /api/projects/<id>/cutoff/`.
 
 ## Burndown: committed scope vs accepted delivery
 
@@ -304,7 +307,7 @@ pytest             # run the suite
 ```
 
 * **Tests** — `pytest` (via pytest-django, config in `pytest.ini`): currently
-  **208 collected / 196 passing + 12 skipped** (the skips are the served-mode
+  **211 collected / 199 passing + 12 skipped** (the skips are the served-mode
   clm-mem suite, which needs the installed SDK's explicit session API). Coverage:
   signal payloads and workflow validation (incl. rejected→started recovery and
   cross-project assign guards), velocity/cutoff math, burndown series plus the
@@ -480,6 +483,7 @@ tasks`); status markers below reflect what actually landed on `main`.
 | blockers-epics-milestones | Blocker edge table + Epic/Milestone models, services, REST, board + detail UI (26 tests) |
 | clm-mem session-API migration | served mode speaks the explicit session API (`open()`/`turn()`/DELETE verbs); mirrored in INTEGRATION.md and `tokamak/memory.py` |
 | automation-webhooks | webhook fan-out receivers mirroring `EventLog` rows (`tokamak/webhooks.py`, config-driven, off by default, idempotent + HMAC/retries; cherry-picked from `25a88fe` via `integration/webhooks`, 13 tests) |
+| cutoff-surface-board | forecast chip strip in the board header (`templates/unicorn/board.html` + append-only css; agent/ora-cutoff-board, 3 tests) |
 
 ### Open backlog
 
@@ -490,41 +494,37 @@ tasks`); status markers below reflect what actually landed on `main`.
     `.venv` shebang points at a deleted path (`…/pivotboard/.venv/bin/python`).
     Rebuild the base venv per AGENTS.md §2 with the pinned git install so served
     mode actually runs in CI, or mark the skip as expected.
-2. **cutoff-surface-board** *(lane: templates + board component; low)* — the
-   pessimistic cutoff and confidence score already render in the velocity panel;
-   decide whether the *board* template should also show remaining points /
-   estimated cutoff inline, or drop the task as superseded.
-3. **md-edit-pages** *(lane: pages + services; med)* — edit an existing project
+2. **md-edit-pages** *(lane: pages + services; med)* — edit an existing project
    or ticket description through the editor widget on detail pages. Needs a new
    service fn for ticket description edits (none exists; `save_project` already
    covers projects). Must fire a signal (`ticket_updated`) and audit into
    `EventLog`.
-4. **md-ref-integrity** *(lane: markdown; low)* — dangling tracker references are
+3. **md-ref-integrity** *(lane: markdown; low)* — dangling tracker references are
    currently *silently unlinked* when the target is deleted (existence rule).
    Decide and indicate it: keep the read-only rule but surface a stale-ref marker
    or an admin report of refs pointing at deleted rows.
-5. **delete-ticket-service** *(lane: services; med, new)* — introduce
+4. **delete-ticket-service** *(lane: services; med, new)* — introduce
    `services.delete_ticket(ticket)` so board deletes stop bypassing the service
    layer: fire a signal, write an EventLog row, and decide what should happen to
    blocker edges that point *at* the deleted ticket (today they cascade away via
    `on_delete=CASCADE` on both `Blocker.source` / `Blocker.target`, silently).
    Deleting a project additionally wipes tickets/iterations/epics/milestones by
    cascade with no audit trail at all.
-6. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
+5. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
    permission layer anywhere: every REST endpoint and page is open, admin is
    reachable for anyone who can reach it, `ALLOWED_HOSTS=['*']`, memory write
    routes are `csrf_exempt`. Add DRF permission classes + Django auth on the
    pages, or consciously document this as a single-user tool.
-7. **css-polish** *(lane: css; deprioritised)* — append-only readability
+6. **css-polish** *(lane: css; deprioritised)* — append-only readability
    improvements at the end of `static/css/app.css`; no class renames.
    Deprioritised because the design language was rewritten twice recently.
-8. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
+7. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
    as clm-mem MCP tools (`clm-mem serve` is already an MCP server at `/mcp` with
    a tool list); pairs with the webhook fan-out so one place feeds both.
-9. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
+8. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
-10. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
+9. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
     playbook leaves until humans confirm (`git worktree list`). The outer sandbox
