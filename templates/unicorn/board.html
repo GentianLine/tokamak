@@ -23,6 +23,35 @@
     </a>
   </div>
 
+  {% with f=forecast %}
+    <div class="forecast-strip"
+         title="backlog forecast via services.estimate_cutoff — the velocity panel below carries the full breakdown">
+      <span class="chip forecast">🔮 {{ f.remaining_points }} pts in backlog</span>
+      {% if f.estimated_cutoff %}
+        <span class="chip forecast cutoff"
+              title="{{ f.average_velocity }} pts/sprint × {{ f.iterations_needed }} iterations of {{ f.iteration_length_days }}d">
+          📅 estimated cutoff {{ f.estimated_cutoff }}
+        </span>
+        {% if f.estimated_cutoff_pessimistic %}
+          <span class="chip forecast pess"
+                title="one sprint of slack when velocity was noisy">
+            pessimistic {{ f.estimated_cutoff_pessimistic }}
+          </span>
+        {% endif %}
+        {% if f.confidence is not None %}
+          <span class="chip forecast conf" title="1 − stdev/mean over accepted history">
+            confidence {{ f.confidence|floatformat:2 }}
+          </span>
+        {% endif %}
+      {% else %}
+        <span class="chip forecast quiet"
+              title="the cutoff needs at least one completed iteration of accepted work">
+            cutoff — no history yet
+        </span>
+      {% endif %}
+    </div>
+  {% endwith %}
+
   {% with grouping=grouping %}
     {% if grouping.epics or grouping.milestones %}
       <div class="grouping">

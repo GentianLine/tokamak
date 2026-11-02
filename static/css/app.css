@@ -419,3 +419,12 @@ textarea[data-md-editor] { font-family: var(--mono); font-size: 13.5px;
 .block-picker .picker { display: inline-flex; flex-wrap: wrap; gap: 3px; align-items: center; margin-left: 6px; font-size: 12px; color: var(--muted); }
 .block-picker .cand { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .muted { color: var(--muted); }
+
+/* Board forecast strip (cutoff-surface-board): compact chips under the
+   board header; the velocity panel keeps the full breakdown. */
+.forecast-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+.chip.forecast { background: var(--panel2); border: 1px solid var(--line);
+  color: var(--muted); border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+.chip.forecast.cutoff { color: var(--dy-hi); border-color: #7c3aed66; }
+.chip.forecast.pess { color: var(--warn); }
+.chip.forecast.conf { color: var(--ok-ink); }

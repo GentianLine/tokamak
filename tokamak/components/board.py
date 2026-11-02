@@ -179,6 +179,9 @@ class BoardView(UnicornView):
         return project.tickets.filter(state__in=ARCHIVED_STATES).count()
 
     def forecast(self):
+        """Compact backlog forecast chips for the board header (cutoff,
+        pessimistic cutoff and confidence come from ``services.estimate_cutoff``;
+        the velocity panel renders the same dict in full)."""
         project = self.project()
         if project is None:
             return {}
