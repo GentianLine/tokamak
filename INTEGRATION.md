@@ -187,9 +187,10 @@ def remember_context(sender, ticket, old_state, new_state, **kwargs):
 * Expose tokamak REST actions as clm-mem MCP tools (`clm-mem serve` is already
   an MCP server; add tokamak's transition/estimate endpoints to its tool list).
 * **Webhook fan-out** from EventLog feeding the bridge in one place (pairs with
-  the `automation-webhooks` task): not built on `main`, but a worker branch
-  (`agent/adm1-automation-webhooks`) already carries an implementation
-  (`tokamak/webhooks.py` + tests) awaiting integration — see README TODO.
+  the `automation-webhooks` task): **integrated on `main`** — the worker branch
+  implementation (`tokamak/webhooks.py` + tests) landed via cherry-pick of
+  `25a88fe`; fan-out itself is generic (any HTTP target), so wiring a webhook
+  endpoint into the memory bridge as a single feed point remains a roadmap idea.
 * A nightly job: `memory_sync --replay-all` then archive-search stats into
   the admin event-analytics view.
 

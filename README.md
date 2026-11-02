@@ -179,8 +179,10 @@ clm-mem sessions as tickets enter/leave the active lanes; gated by
 a broken or absent optional dependency cannot fail a board write.
 
 Every signal is also mirrored into `EventLog` (`/api/events/`) so automations
-can poll or replay history; swapping those audit rows onto a webhook fan-out is
-planned but **not merged yet** — see TODO `automation-webhooks`.
+can poll or replay history, and every `EventLog` row additionally fans out to
+configured HTTP targets through `tokamak/webhooks.py` — config-driven, **off by
+default** (`TOKAMAK['WEBHOOKS']`), idempotent delivery with HMAC signing and
+retries; see *Webhook fan-out* below.
 
 ### Adding your own processor
 
@@ -193,6 +195,23 @@ def triage_bot(sender, ticket, **kwargs):
     if "login" in ticket.name.lower():
         services.estimate_ticket(ticket, 3)   # signals fire again, safely
 ```
+
+### Webhook fan-out
+
+`tokamak/webhooks.py` (integrated from the dormant worker branch
+`agent/adm1-automation-webhooks`) adds opt-in outbound delivery of every
+`EventLog` row: `AppConfig.ready()` calls `webhooks.register_fanout()`, which
+connects receivers **only** when `TOKAMAK['WEBHOOKS']['enabled']` is true and
+targets are configured — the baseline signal graph stays byte-identical
+otherwise (asserted in tests). Delivery is stdlib `urllib` POST of JSON with
+optional HMAC-SHA256 signing (`X-Tokamak-Signature`), configurable timeout,
+`max_retries` and backoff; receivers never raise, so a failing endpoint cannot
+break a board write. Each delivery carries a stable `delivery_id` (event pk +
+target host) and an in-process ledger keyed `(event_pk, url)` makes re-delivery
+a skip — idempotent for consumers that dedupe on it. Targets may restrict
+events with fnmatch patterns (`'project.*'`, `'ticket.state_changed'`). The
+fan-out is read-only toward the audit trail: it mirrors `EventLog` rows but
+**never writes to it**.
 
 ## Admin surfaces
 
@@ -285,19 +304,21 @@ pytest             # run the suite
 ```
 
 * **Tests** — `pytest` (via pytest-django, config in `pytest.ini`): currently
-  **195 collected / 183 passing + 12 skipped** (the skips are the served-mode
+  **208 collected / 196 passing + 12 skipped** (the skips are the served-mode
   clm-mem suite, which needs the installed SDK's explicit session API). Coverage:
   signal payloads and workflow validation (incl. rejected→started recovery and
   cross-project assign guards), velocity/cutoff math, burndown series plus the
   component's SVG geometry, the admin event-analytics dashboard (query bounds,
   zero-state, read-only), every REST action, markdown rendering plus the
-  preview/suggest endpoints and creation pages, drag-reorder, ticket detail POST
+  preview/suggest endpoints and creation pages, drag-reorder, webhook fan-out
+delivery/idempotency, ticket detail POST
   flows for blockers/epics/milestones, memory mirroring/recall and the
   ticket-session lifecycle, and driving the Unicorn board component directly
   (add/estimate/move_to incl. partial-walk errors). Per-area test files:
   `test_blockers.py` (26), `test_markdown.py` (19), `test_burndown.py` (16),
   `test_admin_analytics.py` (16), `test_memory.py` (15), `test_ticket_sessions.py`
-  (13), `test_reorder.py` (13), `test_memory_served.py` (12),
+  (13), `test_reorder.py` (13), `test_webhooks.py` (13), `test_memory_served.py`
+  (12),
   `test_services_edge.py` (11), `test_creation_pages.py` (11),
   `test_md_views.py` (8), plus smaller suites for services/api/pages/components/
   forecast/ticket-pages. The suite lives under `tests/` as function-based
@@ -458,6 +479,7 @@ tasks`); status markers below reflect what actually landed on `main`.
 | rename-tokamak | whole-repo rename onto the Tokamak identity: no `pivot`/`pivotal`/`aigle` branding and no `tracker/` package remain (verified with `git grep`) |
 | blockers-epics-milestones | Blocker edge table + Epic/Milestone models, services, REST, board + detail UI (26 tests) |
 | clm-mem session-API migration | served mode speaks the explicit session API (`open()`/`turn()`/DELETE verbs); mirrored in INTEGRATION.md and `tokamak/memory.py` |
+| automation-webhooks | webhook fan-out receivers mirroring `EventLog` rows (`tokamak/webhooks.py`, config-driven, off by default, idempotent + HMAC/retries; cherry-picked from `25a88fe` via `integration/webhooks`, 13 tests) |
 
 ### Open backlog
 
@@ -468,48 +490,41 @@ tasks`); status markers below reflect what actually landed on `main`.
     `.venv` shebang points at a deleted path (`…/pivotboard/.venv/bin/python`).
     Rebuild the base venv per AGENTS.md §2 with the pinned git install so served
     mode actually runs in CI, or mark the skip as expected.
-2. **automation-webhooks** *(lane: automation; branch exists, never merged)* —
-   config-driven webhook fan-out receivers mirroring `EventLog` rows, off by
-   default, idempotent delivery with HMAC signing + retries. The worker branch
-   `agent/adm1-automation-webhooks` (commit `25a88fe`, 13 tests, `tokamak/webhooks.py`)
-   is **not integrated on main** (`tokamak/webhooks.py` and `tests/test_webhooks.py`
-   exist on that commit but nowhere on `main`) — merge or rebase it, then mark
-   this done.
-3. **cutoff-surface-board** *(lane: templates + board component; low)* — the
+2. **cutoff-surface-board** *(lane: templates + board component; low)* — the
    pessimistic cutoff and confidence score already render in the velocity panel;
    decide whether the *board* template should also show remaining points /
    estimated cutoff inline, or drop the task as superseded.
-4. **md-edit-pages** *(lane: pages + services; med)* — edit an existing project
+3. **md-edit-pages** *(lane: pages + services; med)* — edit an existing project
    or ticket description through the editor widget on detail pages. Needs a new
    service fn for ticket description edits (none exists; `save_project` already
    covers projects). Must fire a signal (`ticket_updated`) and audit into
    `EventLog`.
-5. **md-ref-integrity** *(lane: markdown; low)* — dangling tracker references are
+4. **md-ref-integrity** *(lane: markdown; low)* — dangling tracker references are
    currently *silently unlinked* when the target is deleted (existence rule).
    Decide and indicate it: keep the read-only rule but surface a stale-ref marker
    or an admin report of refs pointing at deleted rows.
-6. **delete-ticket-service** *(lane: services; med, new)* — introduce
+5. **delete-ticket-service** *(lane: services; med, new)* — introduce
    `services.delete_ticket(ticket)` so board deletes stop bypassing the service
    layer: fire a signal, write an EventLog row, and decide what should happen to
    blocker edges that point *at* the deleted ticket (today they cascade away via
    `on_delete=CASCADE` on both `Blocker.source` / `Blocker.target`, silently).
    Deleting a project additionally wipes tickets/iterations/epics/milestones by
    cascade with no audit trail at all.
-7. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
+6. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
    permission layer anywhere: every REST endpoint and page is open, admin is
    reachable for anyone who can reach it, `ALLOWED_HOSTS=['*']`, memory write
    routes are `csrf_exempt`. Add DRF permission classes + Django auth on the
    pages, or consciously document this as a single-user tool.
-8. **css-polish** *(lane: css; deprioritised)* — append-only readability
+7. **css-polish** *(lane: css; deprioritised)* — append-only readability
    improvements at the end of `static/css/app.css`; no class renames.
    Deprioritised because the design language was rewritten twice recently.
-9. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
+8. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
    as clm-mem MCP tools (`clm-mem serve` is already an MCP server at `/mcp` with
    a tool list); pairs with the webhook fan-out so one place feeds both.
-10. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
+9. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
-11. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
+10. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
     playbook leaves until humans confirm (`git worktree list`). The outer sandbox
