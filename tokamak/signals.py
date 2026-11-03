@@ -25,6 +25,11 @@ ticket_iteration_changed = django.dispatch.Signal()
 # Fired after any ticket is created.
 ticket_created = django.dispatch.Signal()
 
+# Fired after a ticket's editable prose changes (md-edit-pages: the
+# amendment flow on the detail page). Field-scoped so future edits reuse it.
+#    providing: ticket, field, old_value, new_value, user (may be None)
+ticket_updated = django.dispatch.Signal()
+
 # Fired immediately BEFORE the ticket row is removed (delete_ticket clears
 # blocker edges first, then sends this so receivers can still read the live
 # instance; the audit receiver writes ``ticket.deleted`` into EventLog).
@@ -109,6 +114,23 @@ def register_receivers():
             payload={'name': ticket.name, 'type': ticket.type},
         )
 
+    def log_ticket_updated(
+        sender, ticket, field, old_value, new_value, user=None, **kwargs
+    ):
+        from .models import EventLog
+
+        EventLog.objects.create(
+            name='ticket.updated',
+            ticket=ticket,
+            project=ticket.project,
+            payload={
+                'field': field,
+                'old': old_value,
+                'new': new_value,
+                'user': getattr(user, 'username', None),
+            },
+        )
+
     def log_ticket_deleted(sender, ticket, user=None, **kwargs):
         from .models import EventLog
 
@@ -185,6 +207,7 @@ def register_receivers():
         log_ticket_iteration, dispatch_uid='log_ticket_iteration'
     )
     ticket_created.connect(log_ticket_created, dispatch_uid='log_ticket_created')
+    ticket_updated.connect(log_ticket_updated, dispatch_uid='log_ticket_updated')
     ticket_deleted.connect(log_ticket_deleted, dispatch_uid='log_ticket_deleted')
     project_updated.connect(log_project_updated, dispatch_uid='log_project_updated')
 
@@ -250,6 +273,21 @@ def register_receivers():
             )
         )
 
+    def live_mirror_updated(
+        sender, ticket, field, old_value, new_value, user=None, **kwargs
+    ):
+        from . import automation
+        from .memory import MirrorRecord
+
+        automation.mirror_to_memory(
+            MirrorRecord(
+                'ticket.updated',
+                ticket.project_id,
+                {'field': field, 'old': old_value, 'new': new_value},
+                ticket=ticket,
+            )
+        )
+
     def live_mirror_deleted(sender, ticket, user=None, **kwargs):
         from . import automation
         from .memory import MirrorRecord
@@ -288,5 +326,6 @@ def register_receivers():
         live_mirror_iteration, dispatch_uid='live_mirror_iteration'
     )
     ticket_created.connect(live_mirror_created, dispatch_uid='live_mirror_created')
+    ticket_updated.connect(live_mirror_updated, dispatch_uid='live_mirror_updated')
     ticket_deleted.connect(live_mirror_deleted, dispatch_uid='live_mirror_deleted')
     project_updated.connect(live_mirror_project, dispatch_uid='live_mirror_project')

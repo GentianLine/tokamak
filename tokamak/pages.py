@@ -9,6 +9,8 @@ Routes (registered in ``tokamak/urls.py``):
     GET|POST /projects/new/              project_create   name='project-create'
     GET|POST /projects/<pk>/tickets/new/ ticket_create    name='ticket-create'
     GET /tickets/<pk>/                   ticket_detail    name='ticket-detail'
+    POST /projects/<pk>/description/     project_description_edit
+                                          (amendment form on the board page)
     GET /projects/<pk>/done/             project_done     name='project-done'
 
 Creation pages are plain request/response (no Unicorn): the markdown editor
@@ -95,6 +97,12 @@ def ticket_detail_action(request, ticket):
             else:
                 epic = None
             services.ticket_set_epic(ticket, epic)
+        elif action == 'update_description':
+            services.update_ticket_description(
+                ticket,
+                request.POST.get('description', ''),
+                user=request.user if request.user.is_authenticated else None,
+            )
         elif action == 'set_milestone':
             milestone_name = (request.POST.get('milestone') or '').strip()
             if milestone_name:
@@ -111,6 +119,26 @@ def ticket_detail_action(request, ticket):
         message = getattr(exc, 'message', None) or str(exc)
         return redirect(f'/tickets/{ticket.pk}/?error={quote_plus(message[:200])}')
     return redirect(f'/tickets/{ticket.pk}/')
+
+
+@ensure_csrf_cookie
+def project_description_edit(request, pk):
+    """POST target for the board page's project-description amendment form.
+
+    ``save_project`` already covers projects (it is what admin edits use), so
+    no new service function was needed here — only a route through it."""
+    project = get_object_or_404(Project, pk=pk)
+    if request.method != 'POST':
+        return redirect(f'/projects/{pk}/')
+    try:
+        services.save_project(
+            project,
+            description=request.POST.get('description', ''),
+        )
+    except Exception as exc:  # flash the reason on reload
+        message = getattr(exc, 'message', None) or str(exc)
+        return redirect(f'/projects/{pk}/?error={quote_plus(message[:200])}')
+    return redirect(f'/projects/{pk}/')
 
 
 @ensure_csrf_cookie

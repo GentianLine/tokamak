@@ -114,6 +114,7 @@ def register_fanout() -> None:
         ticket_estimated,
         ticket_iteration_changed,
         ticket_state_changed,
+        ticket_updated,
     )
 
     for signal in (
@@ -121,6 +122,7 @@ def register_fanout() -> None:
         ticket_estimated,
         ticket_iteration_changed,
         ticket_created,
+        ticket_updated,
         ticket_deleted,
         project_updated,
     ):
@@ -135,6 +137,7 @@ SIGNAL_EVENT_NAMES = {
     'ticket_estimated': 'ticket.estimated',
     'ticket_iteration_changed': 'ticket.iteration_changed',
     'ticket_created': 'ticket.created',
+    'ticket_updated': 'ticket.updated',
     'ticket_deleted': 'ticket.deleted',
     'project_updated': 'project.updated',
 }

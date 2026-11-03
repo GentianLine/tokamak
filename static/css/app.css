@@ -433,3 +433,14 @@ textarea[data-md-editor] { font-family: var(--mono); font-size: 13.5px;
    target is missing get a dashed flag instead of pointing at nothing. */
 .tokamak-ref.stale { color: var(--danger); text-decoration-style: wavy;
   cursor: help; }
+
+/* Description amendment forms (md-edit-pages): inline details editors on
+   the ticket detail and board pages, wired to the same editor widget. */
+details.amend { margin: 8px 0; }
+details.amend > summary { cursor: pointer; list-style: none; padding: 3px 10px;
+  border-radius: 6px; font-size: 13px; color: var(--muted); }
+details.amend > summary:hover { color: var(--dy-hi); background: var(--panel2); }
+details.amend[open] > summary { color: var(--dy-hi); }
+.amend-form textarea { width: 100%; max-width: 760px; background: var(--panel2);
+  color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px; font-size: 13px; }
