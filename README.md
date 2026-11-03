@@ -166,6 +166,7 @@ All mutations (UI click, REST call, admin, management command) go through
 | `ticket_estimated`        | `ticket, old_points, new_points`     |
 | `ticket_iteration_changed`| `ticket, old_iteration, new_iteration` |
 | `project_updated`         | `project`                            |
+| `project_deleted`         | `project, user, blocker_edges`       |
 | `blocker_added`           | `blocker`                            |
 | `blocker_removed`         | `blocker, reason` (`manual` / `accepted` / `cycle` / `deleted`) |
 
@@ -311,7 +312,7 @@ pytest             # run the suite
 ```
 
 * **Tests** — `pytest` (via pytest-django, config in `pytest.ini`): currently
-  **230 collected / 230 passing — nothing skipped**: the served-mode clm-mem
+  **235 collected / 235 passing — nothing skipped**: the served-mode clm-mem
   suite runs against the pinned `clm-mem@main` direct-reference (explicit
   session API), verified locally after rebuilding the base `.venv` per
   AGENTS.md §2; remember to clear inherited `PYTHONPATH`/`PIP_TARGET` when
@@ -331,8 +332,9 @@ delivery/idempotency, ticket detail POST
   (13), `test_reorder.py` (13), `test_webhooks.py` (13), `test_memory_served.py`
   (12),
   `test_services_edge.py` (11), `test_creation_pages.py` (11),
-  `test_md_views.py` (8), `test_md_edit_pages.py` (7), `test_delete_service.py`
-  (7), `test_md_integrity.py` (5), plus smaller suites for services/api/pages/components/
+  `test_md_views.py` (8), `test_project_delete.py` (5),
+  `test_md_edit_pages.py` (7), `test_delete_service.py` (7),
+  `test_md_integrity.py` (5), plus smaller suites for services/api/pages/components/
   forecast/ticket-pages. The suite lives under `tests/` as function-based
   modules; add new tests there rather than reintroducing class-based unittests.
 * **Lint** — `black --check .`, configured in `pyproject.toml`
@@ -471,8 +473,12 @@ and reference autocomplete: typing `#12…`, `ticket:…`, or `project:…` quer
   `blocker.removed` with reason `deleted`), fires `ticket_deleted` while the
   instance is still readable, then deletes the row. `EventLog.ticket` is
   `SET_NULL`, so audit history outlives deleted tickets (rows persist with a
-  null link plus their payload). Deleting whole projects *still* cascades
-  un-audited — flagged in TODO below.
+  null link plus their payload). Whole-project deletion goes through
+  `services.delete_project` the same way: the project's blocker edges clear
+  first (audited), then `project_deleted` fires while the instance is still
+  readable — the audit row snapshots how many tickets, iterations, epics,
+  milestones and edges are about to cascade — and `EventLog.project` is
+  SET_NULL too, so even the project's history outlives the project.
 * Transitioning a ticket to the state it already holds is a **silent no-op** —
   `transition_ticket` returns as soon as `new_state == old_state`, before the
   `ALLOWED_TRANSITIONS` check; re-assigning a ticket to the iteration it already
@@ -505,6 +511,7 @@ tasks`); status markers below reflect what actually landed on `main`.
 | md-ref-integrity | stale markers on dangling explicit refs (`tokamak/markdown.py`, css flag; bare-ref existence rule kept by decision; agent/ora-md-integrity, 5 tests) |
 | md-edit-pages | description amendment flows: `services.update_ticket_description` + `ticket_updated` signal, inline editors on ticket detail + board pages, POST route through `save_project` (agent/ora-md-edit, 7 tests) |
 | verify-served-mode-tests | base `.venv` rebuilt with the pinned git install; full suite runs served mode green (`230 passed`, zero skips); shared-site-packages shadowing documented in README dev notes |
+| project-delete-audit | `services.delete_project` + `project_deleted` signal (edge counts snapshotted into the surviving audit row), `EventLog.project` SET_NULL via migration 0005, REST destroy override (agent/ora-project-delete, 5 tests) |
 
 ### Open backlog
 
@@ -522,11 +529,7 @@ tasks`); status markers below reflect what actually landed on `main`.
 4. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
-5. **project-delete-audit** *(lane: services; low)* — deleting a `Project`
-   still cascades tickets/iterations/epics/milestones (and their surviving
-   EventLog rows via the project FK) with no audit trail at all; mirror the
-   `delete_ticket` pattern into `services.delete_project`.
-6. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
+5. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
     playbook leaves until humans confirm (`git worktree list`). The outer sandbox
