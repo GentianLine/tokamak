@@ -78,6 +78,10 @@ DEFAULTS: Dict = {
 EVENT_TAGS: Dict[str, str] = {
     'project.updated': 'longterm',
     'ticket.created': 'longterm',
+    # Deletion facts outlive eviction — they are the reason a subject is gone.
+    'ticket.deleted': 'longterm',
+    'project.deleted': 'longterm',
+    'ticket.updated': 'shortterm',
     'ticket.state_changed': 'shortterm',
     'ticket.estimated': 'transient',
     'ticket.iteration_changed': 'transient',
