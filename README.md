@@ -311,8 +311,12 @@ pytest             # run the suite
 ```
 
 * **Tests** — `pytest` (via pytest-django, config in `pytest.ini`): currently
-  **230 collected / 218 passing + 12 skipped** (the skips are the served-mode
-  clm-mem suite, which needs the installed SDK's explicit session API). Coverage:
+  **230 collected / 230 passing — nothing skipped**: the served-mode clm-mem
+  suite runs against the pinned `clm-mem@main` direct-reference (explicit
+  session API), verified locally after rebuilding the base `.venv` per
+  AGENTS.md §2; remember to clear inherited `PYTHONPATH`/`PIP_TARGET` when
+  running tools outside a venv, or the stale shared site-packages shadow.
+  Coverage:
   signal payloads and workflow validation (incl. rejected→started recovery and
   cross-project assign guards), velocity/cutoff math, burndown series plus the
   component's SVG geometry, the admin event-analytics dashboard (query bounds,
@@ -500,35 +504,29 @@ tasks`); status markers below reflect what actually landed on `main`.
 | delete-ticket-service | `services.delete_ticket` + `ticket_deleted` signal, edges cleared with audit, surviving history via `EventLog.ticket` SET_NULL (migration 0004); REST destroy + board component path (agent/ora-delete-service, 7 tests) |
 | md-ref-integrity | stale markers on dangling explicit refs (`tokamak/markdown.py`, css flag; bare-ref existence rule kept by decision; agent/ora-md-integrity, 5 tests) |
 | md-edit-pages | description amendment flows: `services.update_ticket_description` + `ticket_updated` signal, inline editors on ticket detail + board pages, POST route through `save_project` (agent/ora-md-edit, 7 tests) |
+| verify-served-mode-tests | base `.venv` rebuilt with the pinned git install; full suite runs served mode green (`230 passed`, zero skips); shared-site-packages shadowing documented in README dev notes |
 
 ### Open backlog
 
-1. **verify-served-mode-tests** *(lane: env/CI; low)* — the 12 served-mode
-    memory tests are currently **skipped** here ("clm-mem explicit session API
-    not installed"): the checkout resolves `clm_mem` from a shared site-packages
-    dir (`.unsloth-packages`) that predates `open()`/`turn()`, and the base
-    `.venv` shebang points at a deleted path (`…/pivotboard/.venv/bin/python`).
-    Rebuild the base venv per AGENTS.md §2 with the pinned git install so served
-    mode actually runs in CI, or mark the skip as expected.
-2. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
+1. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
    permission layer anywhere: every REST endpoint and page is open, admin is
    reachable for anyone who can reach it, `ALLOWED_HOSTS=['*']`, memory write
    routes are `csrf_exempt`. Add DRF permission classes + Django auth on the
    pages, or consciously document this as a single-user tool.
-3. **css-polish** *(lane: css; deprioritised)* — append-only readability
+2. **css-polish** *(lane: css; deprioritised)* — append-only readability
    improvements at the end of `static/css/app.css`; no class renames.
    Deprioritised because the design language was rewritten twice recently.
-4. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
+3. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
    as clm-mem MCP tools (`clm-mem serve` is already an MCP server at `/mcp` with
    a tool list); pairs with the webhook fan-out so one place feeds both.
-5. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
+4. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
-6. **project-delete-audit** *(lane: services; low)* — deleting a `Project`
+5. **project-delete-audit** *(lane: services; low)* — deleting a `Project`
    still cascades tickets/iterations/epics/milestones (and their surviving
    EventLog rows via the project FK) with no audit trail at all; mirror the
    `delete_ticket` pattern into `services.delete_project`.
-7. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
+6. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
     playbook leaves until humans confirm (`git worktree list`). The outer sandbox

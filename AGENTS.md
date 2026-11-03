@@ -26,7 +26,7 @@ Key files to know before touching anything:
 | Templates | `templates/unicorn/*.html`, `templates/tokamak/*.html` | component templates |
 | Client JS (drag & drop) | `static/js/board.js` | calls the Unicorn component; never touches DB directly |
 | Styles | `static/css/app.css` | plain CSS, no build step |
-| Tests | `tests/*` | pytest suite (~230 collected / 218 passing + 12 skipped served-mode): services+signals, forecast math, burndown, blockers, admin event analytics, REST, unicorn components, page renders (incl. amendments), markdown (incl. ref integrity), reorder, webhook fan-out, deletion audit, memory mirroring + ticket sessions |
+| Tests | `tests/*` | pytest suite (~230 collected / 230 passing — served mode included, base .venv rebuilt): services+signals, forecast math, burndown, blockers, admin event analytics, REST, unicorn components, page renders (incl. amendments), markdown (incl. ref integrity), reorder, webhook fan-out, deletion audit, memory mirroring + ticket sessions |
 
 Non-negotiable conventions (violating these breaks other agents' work):
 
