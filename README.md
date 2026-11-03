@@ -160,6 +160,7 @@ All mutations (UI click, REST call, admin, management command) go through
 | Signal                    | Payload                              |
 |---------------------------|--------------------------------------|
 | `ticket_created`          | `ticket`                             |
+| `ticket_updated`          | `ticket, field, old_value, new_value, user` |
 | `ticket_deleted`          | `ticket, user`                       |
 | `ticket_state_changed`    | `ticket, old_state, new_state, user` |
 | `ticket_estimated`        | `ticket, old_points, new_points`     |
@@ -310,7 +311,7 @@ pytest             # run the suite
 ```
 
 * **Tests** — `pytest` (via pytest-django, config in `pytest.ini`): currently
-  **223 collected / 211 passing + 12 skipped** (the skips are the served-mode
+  **230 collected / 218 passing + 12 skipped** (the skips are the served-mode
   clm-mem suite, which needs the installed SDK's explicit session API). Coverage:
   signal payloads and workflow validation (incl. rejected→started recovery and
   cross-project assign guards), velocity/cutoff math, burndown series plus the
@@ -326,8 +327,8 @@ delivery/idempotency, ticket detail POST
   (13), `test_reorder.py` (13), `test_webhooks.py` (13), `test_memory_served.py`
   (12),
   `test_services_edge.py` (11), `test_creation_pages.py` (11),
-  `test_md_views.py` (8), `test_delete_service.py` (7), `test_md_integrity.py`
-  (5), plus smaller suites for services/api/pages/components/
+  `test_md_views.py` (8), `test_md_edit_pages.py` (7), `test_delete_service.py`
+  (7), `test_md_integrity.py` (5), plus smaller suites for services/api/pages/components/
   forecast/ticket-pages. The suite lives under `tests/` as function-based
   modules; add new tests there rather than reintroducing class-based unittests.
 * **Lint** — `black --check .`, configured in `pyproject.toml`
@@ -429,7 +430,11 @@ renderer queries names for labels but never mutates.
 
 **Where it renders**: ticket detail, done archive rows (plain-text `excerpt`
 tooltip + one-line digest), board cards (`desc-excerpt`), project page
-description. Ticket **edit** surfaces are not built yet — see TODO `md-edit-pages`.
+description. **Amendment** flows render through the same widget: the ticket
+detail page carries an inline editor POSTing `update_description` to
+`services.update_ticket_description` (audited as `ticket.updated` via the new
+`ticket_updated` signal), and the board page carries one for the project
+description POSTing `/projects/<pk>/description/` through `save_project`.
 
 **Creation pages** (the editors live here):
 
@@ -494,6 +499,7 @@ tasks`); status markers below reflect what actually landed on `main`.
 | cutoff-surface-board | forecast chip strip in the board header (`templates/unicorn/board.html` + append-only css; agent/ora-cutoff-board, 3 tests) |
 | delete-ticket-service | `services.delete_ticket` + `ticket_deleted` signal, edges cleared with audit, surviving history via `EventLog.ticket` SET_NULL (migration 0004); REST destroy + board component path (agent/ora-delete-service, 7 tests) |
 | md-ref-integrity | stale markers on dangling explicit refs (`tokamak/markdown.py`, css flag; bare-ref existence rule kept by decision; agent/ora-md-integrity, 5 tests) |
+| md-edit-pages | description amendment flows: `services.update_ticket_description` + `ticket_updated` signal, inline editors on ticket detail + board pages, POST route through `save_project` (agent/ora-md-edit, 7 tests) |
 
 ### Open backlog
 
@@ -504,30 +510,25 @@ tasks`); status markers below reflect what actually landed on `main`.
     `.venv` shebang points at a deleted path (`…/pivotboard/.venv/bin/python`).
     Rebuild the base venv per AGENTS.md §2 with the pinned git install so served
     mode actually runs in CI, or mark the skip as expected.
-2. **md-edit-pages** *(lane: pages + services; med)* — edit an existing project
-   or ticket description through the editor widget on detail pages. Needs a new
-   service fn for ticket description edits (none exists; `save_project` already
-   covers projects). Must fire a signal (`ticket_updated`) and audit into
-   `EventLog`.
-3. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
+2. **auth-permissions** *(lane: whole app; high, before any deploy)* — no
    permission layer anywhere: every REST endpoint and page is open, admin is
    reachable for anyone who can reach it, `ALLOWED_HOSTS=['*']`, memory write
    routes are `csrf_exempt`. Add DRF permission classes + Django auth on the
    pages, or consciously document this as a single-user tool.
-4. **css-polish** *(lane: css; deprioritised)* — append-only readability
+3. **css-polish** *(lane: css; deprioritised)* — append-only readability
    improvements at the end of `static/css/app.css`; no class renames.
    Deprioritised because the design language was rewritten twice recently.
-5. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
+4. **memory-mcp-tools** *(lane: integration; med)* — expose Tokamak REST actions
    as clm-mem MCP tools (`clm-mem serve` is already an MCP server at `/mcp` with
    a tool list); pairs with the webhook fan-out so one place feeds both.
-6. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
+5. **memory-nightly-job** *(lane: ops; low)* — `memory_sync --replay-all` plus
    archive-search stats rolled into the admin event-analytics view (see
    INTEGRATION.md "Roadmap ideas").
-7. **project-delete-audit** *(lane: services; low)* — deleting a `Project`
+6. **project-delete-audit** *(lane: services; low)* — deleting a `Project`
    still cascades tickets/iterations/epics/milestones (and their surviving
    EventLog rows via the project FK) with no audit trail at all; mirror the
    `delete_ticket` pattern into `services.delete_project`.
-8. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
+7. **stale-worktree-cleanup** *(ops/human)* — leftover runtime state still
     lingers from finished runs: `workspaces/` (project-*/ticket-1 memory dirs),
     `scratch/retired/db_pre_rename.sqlite3`, and the worker worktrees the merge
     playbook leaves until humans confirm (`git worktree list`). The outer sandbox
