@@ -287,8 +287,15 @@ class EventLog(models.Model):
     """
 
     name = models.CharField(max_length=100, db_index=True)
+    # SET_NULL here too (project-delete-audit): the audit trail outlives even
+    # its top-level subject — rows about a deleted project persist with a
+    # null link.
     project = models.ForeignKey(
-        Project, null=True, blank=True, on_delete=models.CASCADE, related_name='events'
+        Project,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='events',
     )
     # SET_NULL (not CASCADE): deleting a ticket through the service layer
     # must not erase its audit history — rows survive with a null link.

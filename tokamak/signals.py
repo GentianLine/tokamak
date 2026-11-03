@@ -40,6 +40,15 @@ ticket_deleted = django.dispatch.Signal()
 #    providing: project
 project_updated = django.dispatch.Signal()
 
+# Fired immediately BEFORE the project row is removed (project-delete-audit):
+# services.delete_project clears blocker edges first, then sends this while
+# the instance is still readable so the audit receiver can snapshot into the
+# payload exactly what is about to cascade away with it.
+#    providing: project, user (may be None), blocker_edges (count of edges
+#    detached ahead of the cascade by services.delete_project; omitted by
+#    direct senders, in which case the audit receiver counts what remains)
+project_deleted = django.dispatch.Signal()
+
 # --- Blocker graph signals (tokamak/services.py::add_blocker/remove_blocker)
 # The payload kwarg names below are part of the public contract (AGENTS.md
 # §1): a new pair of signals, not a rename of the five existing ones.
@@ -131,6 +140,28 @@ def register_receivers():
             },
         )
 
+    def log_project_deleted(sender, project, user=None, blocker_edges=None, **kwargs):
+        from .models import Blocker, EventLog
+        from .services import epic_model, milestone_model
+
+        edges = Blocker.objects.filter(source__project=project)
+        EventLog.objects.create(
+            name='project.deleted',
+            project=project,
+            payload={
+                'name': project.name,
+                'archived': project.archived,
+                'tickets': project.tickets.count(),
+                'iterations': project.iterations.count(),
+                'epics': epic_model().objects.filter(project=project).count(),
+                'milestones': milestone_model().objects.filter(project=project).count(),
+                'blocker_edges': (
+                    edges.count() if blocker_edges is None else blocker_edges
+                ),
+                'user': getattr(user, 'username', None),
+            },
+        )
+
     def log_ticket_deleted(sender, ticket, user=None, **kwargs):
         from .models import EventLog
 
@@ -209,6 +240,7 @@ def register_receivers():
     ticket_created.connect(log_ticket_created, dispatch_uid='log_ticket_created')
     ticket_updated.connect(log_ticket_updated, dispatch_uid='log_ticket_updated')
     ticket_deleted.connect(log_ticket_deleted, dispatch_uid='log_ticket_deleted')
+    project_deleted.connect(log_project_deleted, dispatch_uid='log_project_deleted')
     project_updated.connect(log_project_updated, dispatch_uid='log_project_updated')
 
     # -- live clm-mem mirror (opt-in; receiver no-ops unless TOKAMAK_MEMORY
@@ -326,6 +358,27 @@ def register_receivers():
         live_mirror_iteration, dispatch_uid='live_mirror_iteration'
     )
     ticket_created.connect(live_mirror_created, dispatch_uid='live_mirror_created')
+
+    def live_mirror_project_deleted(sender, project, user=None, **kwargs):
+        from . import automation
+        from .memory import MirrorRecord
+
+        automation.mirror_to_memory(
+            MirrorRecord(
+                'project.deleted',
+                project.id,
+                {
+                    'name': project.name,
+                    'archived': project.archived,
+                    'tickets': project.tickets.count(),
+                },
+            )
+        )
+
     ticket_updated.connect(live_mirror_updated, dispatch_uid='live_mirror_updated')
     ticket_deleted.connect(live_mirror_deleted, dispatch_uid='live_mirror_deleted')
+    project_deleted.connect(
+        live_mirror_project_deleted,
+        dispatch_uid='live_mirror_project_deleted',
+    )
     project_updated.connect(live_mirror_project, dispatch_uid='live_mirror_project')
