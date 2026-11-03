@@ -604,8 +604,7 @@ def delete_ticket(ticket, *, user=None):
 
     The audit trail survives: ``EventLog.ticket`` is SET_NULL, so rows about
     a deleted ticket persist with a null link plus their original payload.
-    Deleting whole projects still cascades un-audited — see the README
-    backlog (delete-ticket-service scope note).
+    Deleting whole projects goes through :func:`delete_project` below.
     """
     from .models import Blocker
     from .signals import blocker_removed, ticket_deleted
@@ -620,6 +619,45 @@ def delete_ticket(ticket, *, user=None):
     ticket_deleted.send(sender=Ticket, ticket=ticket, user=user)
     pk = ticket.pk
     ticket.delete()
+    return pk
+
+
+@transaction.atomic
+def delete_project(project, *, user=None):
+    """Remove a whole project through the service layer (project-delete-audit).
+
+    A bare ``Project.objects.filter(...).delete()`` used to wipe tickets,
+    iterations, epics and milestones by cascade with no trail at all. This
+    mirrors the ``delete_ticket`` discipline one level up: inside one
+    transaction every blocker edge of the project's tickets is cleared first
+    (each audited as ``blocker_removed`` with reason ``deleted``), then
+    ``project_deleted`` fires while the instance is still readable — the
+    audit receiver snapshots counts of everything about to cascade into the
+    ``project.deleted`` payload — and finally the row goes.
+
+    History outlives the history's parent: ``EventLog.project`` is SET_NULL,
+    so every surviving row keeps its payload with a null project link.
+    """
+    from .models import Blocker
+    from .signals import blocker_removed, project_deleted
+
+    detached = []
+    for edge in Blocker.objects.filter(
+        Q(source__project=project) | Q(target__project=project)
+    ):
+        edge.delete()
+        detached.append(edge)
+    for edge in detached:
+        blocker_removed.send(sender=Blocker, blocker=edge, reason='deleted')
+
+    project_deleted.send(
+        sender=type(project),
+        project=project,
+        user=user,
+        blocker_edges=len(detached),
+    )
+    pk = project.pk
+    project.delete()
     return pk
 
 

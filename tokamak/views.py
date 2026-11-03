@@ -134,6 +134,15 @@ class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
 
+    def destroy(self, request, *args, **kwargs):
+        """DELETE goes through the service layer: edges + audit first,
+        not a bare cascade."""
+        services.delete_project(
+            self.get_object(),
+            user=request.user if request.user.is_authenticated else None,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def get_tickets(self):
         return Ticket.objects.filter(project_id=self.kwargs['pk'])
 
