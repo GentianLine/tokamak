@@ -18,6 +18,16 @@
 <div class="rendered-md project-desc">{{ project.description|md_render }}</div>
 {% endif %}
 
+<details class="amend md-amend">
+  <summary>✎ {% if project.description %}Amend{% else %}Add{% endif %} project description</summary>
+  <form method="post" action="/projects/{{ project.pk }}/description/"
+        class="inline-form amend-form">
+    {% csrf_token %}
+    <textarea name="description" rows="8" data-md-editor="">{{ project.description }}</textarea>
+    <button type="submit" class="btn primary">Save description</button>
+  </form>
+</details>
+
 {% unicorn 'board' project_id=project.pk %}
 {% unicorn 'velocity' project_id=project.pk %}
 {% endblock %}

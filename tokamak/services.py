@@ -558,6 +558,39 @@ def _reachable(src_pk, dst_pk, project_id):
 
 
 @transaction.atomic
+def update_ticket_description(ticket, description, *, user=None):
+    """Amend a ticket's markdown description through the service layer
+    (md-edit-pages). Rejects prose longer than the renderer's own guard
+    (``markdown.MAX_INPUT_CHARS``) so nothing silently truncates on read.
+    Fires ``ticket_updated`` with field/old/new; the audit receiver mirrors
+    it into ``EventLog`` as ``ticket.updated``."""
+    from .markdown import MAX_INPUT_CHARS
+    from .signals import ticket_updated
+
+    description = description or ''
+    if len(description) > MAX_INPUT_CHARS:
+        raise ValidationError(
+            {
+                'description': (
+                    f'Too long: {len(description)} chars ' f'(max {MAX_INPUT_CHARS}).'
+                )
+            }
+        )
+    old = ticket.description
+    ticket.description = description
+    ticket.save(update_fields=['description'])
+    ticket_updated.send(
+        sender=Ticket,
+        ticket=ticket,
+        field='description',
+        old_value=old,
+        new_value=description,
+        user=user,
+    )
+    return ticket
+
+
+@transaction.atomic
 def delete_ticket(ticket, *, user=None):
     """Remove a ticket through the service layer (the board's delete button
     and ``DELETE /api/tickets/<pk>/`` share this path).

@@ -99,6 +99,19 @@
     {% if ticket.description %}{{ ticket.description|md_render }}{% else %}<em>No description yet.</em>{% endif %}
   </div>
 
+  <details class="amend md-amend">
+    <summary>✎ Amend description</summary>
+    <form method="post" class="inline-form amend-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="update_description">
+      <label for="ticket-desc">Description
+        <span class="meta">markdown · #refs · live preview below</span></label>
+      <textarea id="ticket-desc" name="description" rows="10"
+                data-md-editor="">{{ ticket.description }}</textarea>
+      <button type="submit" class="btn primary">Save description</button>
+    </form>
+  </details>
+
   {% if sessions %}
     <h3>Memory sessions</h3>
     <ul class="timeline">

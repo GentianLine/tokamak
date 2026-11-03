@@ -6,6 +6,7 @@ from .md_views import markdown_preview, markdown_suggest
 from .models import Project
 from .pages import (
     project_create as project_create_view,
+    project_description_edit as project_description_edit_view,
     project_done as project_done_view,
     ticket_create as ticket_create_view,
     ticket_detail as ticket_detail_view,
@@ -35,6 +36,11 @@ urlpatterns = [
         name='ticket-create',
     ),
     path('tickets/<int:pk>/', ticket_detail_view, name='ticket-detail'),
+    path(
+        'projects/<int:pk>/description/',
+        project_description_edit_view,
+        name='project-description-edit',
+    ),
     path('projects/<int:pk>/done/', project_done_view, name='project-done'),
     path('markdown/preview/', markdown_preview, name='markdown-preview'),
     path('markdown/suggest/', markdown_suggest, name='markdown-suggest'),
