@@ -45,6 +45,88 @@ pip install "git+https://github.com/GentianLine/clm-mem.git@main"   # equivalent
 * Admin `/admin/` — plus a read-only **Event Log** view of everything signals saw
   and an aggregated **Event Analytics** dashboard (see *Admin surfaces*)
 
+## Getting started: the full memory stack (tokamak → clm-mem → systemone)
+
+Beyond the bare board, Tokamak can run as the driver of a live long/short-term
+memory service: every board signal mirrors into per-project branches of
+[clm-mem](https://github.com/GentianLine/clm-mem) served mode, and clm-mem
+classifies each ingested block with a local **systemone** model. The verified
+reference wiring (the `kaila-tests` worktree, branch `kaila/tests`) runs four
+processes — tokamak drives clm-mem, which is backed by avalon
+([llamacpp-jev](https://github.com/NakliTechie/llamacpp-jev), a llama.cpp fork
+wrapper serving TypeSafe Jev's `/v1/systemone` decision API) as the primary
+inference server, with a plain `llama-server` on standby as the backup.
+
+```text
+ tokamak (Django, :8300)                     terminal 4
+   │  TOKAMAK_MEMORY: mode='served', mirror='live'
+   ▼
+ clm-mem serve (:8080)                       terminal 3 — memory daemon;
+   │  branches ws:project-<pk>, explicit session API        every ingest turn is classified
+   ▼                                                       by the systemone model
+ avalon / llamajev (:8000)                   terminal 1 — systemone model (primary)
+ llama-server (:8001)                        terminal 2 — backup inference target
+```
+
+### Terminal 1 · avalon (llamacpp-jev — the systemone model, :8000)
+
+```bash
+git clone https://github.com/NakliTechie/llamacpp-jev && cd llamacpp-jev
+cmake -B build-metal -DGGML_METAL=ON -DLLAMA_CURL=ON -DCMAKE_BUILD_TYPE=Release   # or -DGGML_CUDA=ON
+cmake --build build-metal --target llama-server -j
+hf download unsloth/Qwen3.5-2B-GGUF Qwen3.5-2B-Q8_0.gguf mmproj-F16.gguf
+uv sync
+uv run llamajev serve --model ./Qwen3.5-2B-Q8_0.gguf \
+  --mmproj ./mmproj-F16.gguf \
+  --llama-server ./build-metal/bin/llama-server --slots 4 --port 8000
+# verify: uv run llamajev smoke   (three typed questions ×3 against :8000)
+```
+
+### Terminal 2 · backup inference server (plain llama.cpp, :8001)
+
+```bash
+./build-metal/bin/llama-server -m ./Qwen3.5-2B-Q8_0.gguf \
+  --ctx-checkpoints 32 --checkpoint-min-step 0 --cache-ram 0 \
+  --port 8001 --host 127.0.0.1
+```
+
+### Terminal 3 · clm-mem serve (memory daemon, :8080 — backend = avalon)
+
+Run from a venv with the pinned `clm-mem @ main` SDK (the explicit session API
+needs it; `pip install "git+https://github.com/GentianLine/clm-mem.git@main"`):
+
+```bash
+clm-mem serve \
+  --backend-url http://127.0.0.1:8000/v1 \          # chat backend: avalon (primary)
+  --systemone-url http://127.0.0.1:8000/v1/systemone \  # decision API: same avalon
+  --served-model systemone-avalon \
+  --port 8080
+# if avalon goes down, restart with the backup:
+#   clm-mem serve --backend-url http://127.0.0.1:8001/v1 --systemone-passthrough ... (or a fork build)
+```
+
+### Terminal 4 · tokamak (drives clm-mem; the board is the memory producer)
+
+```bash
+git worktree add ../workspaces/kaila-tests -b kaila/tests   # one time; do not modify that workspace
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt          # pulls clm-mem @ main
+.venv/bin/python manage.py migrate && .venv/bin/python manage.py seed_demo
+# settings (config/settings.py): TOKAMAK_MEMORY = { 'enabled': True, 'mode': 'served',
+#   'backend_base_url': 'http://127.0.0.1:8080/v1', 'backend_model': 'systemone-avalon',
+#   'mirror': 'live' }
+.venv/bin/python manage.py runserver 0.0.0.0:8300
+# replay board history into memory branches (or rely on mirror='live' from now on):
+.venv/bin/python manage.py memory_sync --replay-all
+.venv/bin/python manage.py memory_recall "deploy" --project 1
+```
+
+Topology: **tokamak → clm-mem serve (:8080) → avalon systemone (:8000)**, with
+the plain `llama-server` on :8001 as the backup inference target (swap
+`--backend-url` in terminal 3 to it if avalon goes down). Sandbox note: where a
+shared package dir is exported (e.g. Unsloth Studio), clear it so the
+workspace's own clm-mem wins — `env -u PIP_PREFIX -u PYTHONPATH .venv/bin/python …`.
+
 ## Core concepts
 
 | Model       | Role                                                            |
