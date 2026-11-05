@@ -95,7 +95,9 @@ def test_open_on_started_and_close_on_finished(db, tmp_path):
         assert sess.status == 'ended'
         assert sess.end_reason == 'ticket:finished'
         assert 'ship behind a flag' in sess.summary
-        assert sess.payload['offloaded'] == 1 and sess.payload['archive'] == 1
+        # offloaded >= 1: the initial turn adds a shortterm block alongside
+        # the explicit longterm decision.
+        assert sess.payload['offloaded'] >= 1 and sess.payload['archive'] >= 1
         names = [
             e.name
             for e in EventLog.objects.filter(ticket=t).exclude(
@@ -284,3 +286,96 @@ def test_cli_noop_errors(db):
 
     with pytest.raises(CommandError):
         call_command('ticket_session')
+
+
+# --- context seeding -----------------------------------------------------------
+
+
+def test_context_block_seeded_on_open(db, tmp_path):
+    """Opening a session injects a pinned ticket-context block."""
+    project = make_project('CtxA')
+    t = make_ticket(project, 'Fix the deploy script')
+    with sess_cfg(tmp_path):
+        services.transition_ticket(t, 'started')
+        h = bridge.ticket_harness(t)
+        contents = [b.content for b in h.live_blocks()]
+        joined = '\n'.join(contents)
+        assert 'Fix the deploy script' in joined
+        assert 'CtxA' in joined
+        # The context block is pinned (survives eviction)
+        pinned = [b for b in h.live_blocks() if getattr(b, 'pinned', False)]
+        assert any('ticket context' in b.content for b in pinned)
+
+
+def test_context_block_includes_repos(db, tmp_path):
+    """Attached repos appear in the seeded context block."""
+    project = make_project('CtxB')
+    services.project_add_repo(
+        project,
+        name='main-repo',
+        url='https://github.com/example/main.git',
+        branch='main',
+        is_primary=True,
+    )
+    services.project_add_repo(
+        project,
+        name='shared-lib',
+        url='https://github.com/example/shared.git',
+        kind='git',
+    )
+    t = make_ticket(project, 'Update shared lib usage')
+    with sess_cfg(tmp_path):
+        services.transition_ticket(t, 'started')
+        h = bridge.ticket_harness(t)
+        contents = '\n'.join(b.content for b in h.live_blocks())
+        assert 'main-repo' in contents
+        assert 'https://github.com/example/main.git' in contents
+        assert '[branch: main]' in contents
+        assert 'shared-lib' in contents
+
+
+def test_context_block_includes_ticket_metadata(db, tmp_path):
+    """Description, iteration, milestone, estimate all appear."""
+    from datetime import date, timedelta
+    from tokamak.models import Iteration, Milestone
+
+    project = make_project('CtxC')
+    it = Iteration.objects.create(
+        project=project, number=5,
+        start_date=date.today(), end_date=date.today() + timedelta(days=13),
+    )
+    ms = Milestone.objects.create(project=project, name='v2.0', due_date=date.today() + timedelta(days=60))
+    t = make_ticket(project, 'Refactor auth')
+    services.assign_iteration(t, it)
+    from tokamak.services import ticket_set_milestone
+    ticket_set_milestone(t, ms)
+    services.estimate_ticket(t, 5)
+    with sess_cfg(tmp_path):
+        services.transition_ticket(t, 'started')
+        h = bridge.ticket_harness(t)
+        contents = '\n'.join(b.content for b in h.live_blocks())
+        assert 'Iteration: 5' in contents
+        assert 'Milestone: v2.0' in contents
+        assert 'Estimate: 5 pts' in contents
+
+
+def test_context_seeded_payload_recorded(db, tmp_path):
+    """The session payload records that context was seeded."""
+    project = make_project('CtxD')
+    t = make_ticket(project, 'Payload check')
+    with sess_cfg(tmp_path):
+        services.transition_ticket(t, 'started')
+        sess = MemorySession.objects.filter(ticket=t).first()
+        assert sess.payload.get('context_seeded', 0) >= 1
+
+
+def test_initial_turn_triggered(db, tmp_path):
+    """Opening a session triggers an initial model turn (visible in the window)."""
+    project = make_project('CtxE')
+    t = make_ticket(project, 'Trigger check')
+    with sess_cfg(tmp_path):
+        services.transition_ticket(t, 'started')
+        h = bridge.ticket_harness(t)
+        # StubChat echoes back; the turn should be in the window
+        contents = '\n'.join(b.content for b in h.live_blocks())
+        assert 'Acknowledge' in contents or 'acknowledge' in contents.lower()

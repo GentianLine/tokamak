@@ -227,6 +227,62 @@ def save_project(project, *, name=None, description=None, archived=None):
 
 
 # ---------------------------------------------------------------------------
+# Project repos (attached sources for agents)
+# ---------------------------------------------------------------------------
+@transaction.atomic
+def project_add_repo(
+    project,
+    *,
+    name,
+    url='',
+    path='',
+    kind='git',
+    branch='',
+    description='',
+    is_primary=False,
+):
+    """Attach a repo/folder to a project. Duplicate names are rejected."""
+    from .models import ProjectRepo
+
+    name = (name or '').strip()
+    if not name:
+        raise ValidationError({'name': 'Repo name is required.'})
+    if kind not in ('git', 'folder'):
+        raise ValidationError({'kind': "Must be 'git' or 'folder'."})
+    exists = ProjectRepo.objects.filter(project=project, name=name).exists()
+    if exists:
+        raise ValidationError({'name': f'Repo "{name}" already attached to this project.'})
+    repo = ProjectRepo.objects.create(
+        project=project,
+        name=name,
+        url=url or '',
+        path=path or '',
+        kind=kind,
+        branch=branch or '',
+        description=description or '',
+        is_primary=is_primary,
+    )
+    if is_primary:
+        ProjectRepo.objects.filter(project=project).exclude(pk=repo.pk).update(
+            is_primary=False
+        )
+    project_updated.send(sender=type(project), project=project)
+    return repo
+
+
+@transaction.atomic
+def project_remove_repo(repo, *, user=None):
+    """Detach a repo from its project (cascade-safe: just delete the row)."""
+    from .models import ProjectRepo
+
+    if not isinstance(repo, ProjectRepo):
+        raise ValidationError({'repo': 'Expected a ProjectRepo instance.'})
+    project = repo.project
+    repo.delete()
+    project_updated.send(sender=type(project), project=project)
+
+
+# ---------------------------------------------------------------------------
 # Planning / estimation math
 # ---------------------------------------------------------------------------
 def backlog_points(project):
@@ -397,6 +453,52 @@ def estimate_cutoff(project, as_of=None):
 # MemorySession.summary + an EventLog row. Nothing mutates Ticket state —
 # that stays the job of the workflow functions above, from UI/API/admin/bots.
 # ---------------------------------------------------------------------------
+def _build_ticket_context_block(ticket):
+    """Assemble a structured context block for a new ticket session.
+
+    Includes ticket metadata, project info, and attached repos so the agent
+    knows what to work on and where the source lives. This block is pinned in
+    the memory window — eviction never removes it.
+    """
+    lines = [
+        f"[ticket context] Ticket #{ticket.id}: {ticket.name}",
+        f"Type: {ticket.get_type_display()}",
+        f"Description: {ticket.description or '(none provided)'}",
+        f"Project: {ticket.project.name}"
+        + (f" — {ticket.project.description}" if ticket.project.description else ''),
+    ]
+    if ticket.iteration:
+        lines.append(f"Iteration: {ticket.iteration.number}")
+    if ticket.milestone:
+        lines.append(f"Milestone: {ticket.milestone.name}")
+    if ticket.story_points is not None:
+        lines.append(f"Estimate: {ticket.story_points} pts")
+
+    # Attached repos/folders
+    repos = ticket.project.repos.all()
+    if repos:
+        lines.append('')
+        lines.append('Attached sources:')
+        for r in repos:
+            entry = f"  - {r.name} ({r.kind})"
+            if r.url:
+                entry += f" — {r.url}"
+            if r.branch:
+                entry += f" [branch: {r.branch}]"
+            if r.path:
+                entry += f" (local: {r.path})"
+            if r.description:
+                entry += f" — {r.description}"
+            lines.append(entry)
+
+    lines.append('')
+    lines.append(
+        'You are an agent assigned to this ticket. Read the description, '
+        'explore the attached sources, and begin work.'
+    )
+    return '\n'.join(lines)
+
+
 @transaction.atomic
 def open_ticket_session(ticket, *, user=None, monitor_url='', session_key=''):
     """Open a clm-mem session for one ticket attempt; idempotent per ticket:
@@ -430,12 +532,40 @@ def open_ticket_session(ticket, *, user=None, monitor_url='', session_key=''):
         # local mode: monitoring is the bridge snapshot route + mirrored files
         sess.monitor_url = f"/api/sessions/{sess.pk}/snapshot/"
         sess.save(update_fields=['monitor_url'])
-    # Seed continuity: pull previous attempts' archived facts into the window.
+    # Seed continuity: pull previous attempts' archived facts into the window,
+    # then inject a pinned ticket-context block so the agent knows what it's
+    # working on and where the source lives.
+    context_seeded = 0
     try:
         harness = bridge.ticket_harness(ticket)
         seeded = bridge.seed_from_archive(harness)
         if seeded:
             sess.payload['seeded_blocks'] = seeded
+        # Structured ticket-context block (pinned: eviction never removes it).
+        context_block = _build_ticket_context_block(ticket)
+        if hasattr(harness, 'add'):
+            harness.add('system', context_block, tag='longterm', pinned=True)
+            context_seeded += 1
+        else:
+            bridge.remote_ingest(harness, context_block)
+            context_seeded += 1
+        # Trigger an initial turn so the model acknowledges and plans.
+        try:
+            if callable(getattr(harness, 'turn', None)):
+                bridge.remote_ingest(
+                    harness,
+                    "Acknowledge this ticket. State what you understand about "
+                    "the task and outline your first 2-3 steps.",
+                )
+            else:
+                harness.step(
+                    "Acknowledge this ticket. State what you understand about "
+                    "the task and outline your first 2-3 steps."
+                )
+        except Exception:
+            pass  # best-effort; the session is open regardless
+        if context_seeded or seeded:
+            sess.payload['context_seeded'] = context_seeded
             sess.save()
     except Exception:
         # seeding is best-effort (a served daemon may be unreachable); the

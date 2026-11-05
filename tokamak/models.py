@@ -312,6 +312,59 @@ class EventLog(models.Model):
         return f'{self.name} @ {self.created_at:%Y-%m-%d %H:%M}'
 
 
+class ProjectRepo(models.Model):
+    """A source repository or folder attached to a project.
+
+    Agents working on tickets in this project get access to the repos listed
+    here. Each repo has a canonical git URL (the source of truth) and an
+    optional local path where it is checked out for this workspace. When a
+    ticket session opens, the attached repos are included in the context block
+    so the agent knows where to look.
+    """
+
+    class Kind(models.TextChoices):
+        GIT = 'git', 'Git repo'
+        FOLDER = 'folder', 'Plain folder'
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name='repos'
+    )
+    name = models.CharField(max_length=200)
+    url = models.URLField(
+        blank=True,
+        help_text='Git remote URL (canonical source of truth).',
+    )
+    path = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text='Local checkout path (relative to workspace or absolute).',
+    )
+    kind = models.CharField(
+        max_length=20, choices=Kind.choices, default=Kind.GIT
+    )
+    branch = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text='Default branch to track (e.g. main, develop).',
+    )
+    description = models.TextField(blank=True)
+    is_primary = models.BooleanField(
+        default=False,
+        help_text='The main codebase for this project.',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-is_primary', 'name']
+        unique_together = [('project', 'name')]
+
+    def __str__(self):
+        label = f'{self.name} ({self.kind})'
+        if self.url:
+            label += f' — {self.url}'
+        return label
+
+
 class MemorySession(models.Model):
     """One clm-mem chat/memory session attached to a ticket attempt.
 
