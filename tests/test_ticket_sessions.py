@@ -341,13 +341,18 @@ def test_context_block_includes_ticket_metadata(db, tmp_path):
 
     project = make_project('CtxC')
     it = Iteration.objects.create(
-        project=project, number=5,
-        start_date=date.today(), end_date=date.today() + timedelta(days=13),
+        project=project,
+        number=5,
+        start_date=date.today(),
+        end_date=date.today() + timedelta(days=13),
     )
-    ms = Milestone.objects.create(project=project, name='v2.0', due_date=date.today() + timedelta(days=60))
+    ms = Milestone.objects.create(
+        project=project, name='v2.0', due_date=date.today() + timedelta(days=60)
+    )
     t = make_ticket(project, 'Refactor auth')
     services.assign_iteration(t, it)
     from tokamak.services import ticket_set_milestone
+
     ticket_set_milestone(t, ms)
     services.estimate_ticket(t, 5)
     with sess_cfg(tmp_path):

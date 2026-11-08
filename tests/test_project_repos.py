@@ -106,7 +106,9 @@ def test_repo_ordering(db):
     """Primary repos sort first, then by name."""
     project = make_project('R11')
     services.project_add_repo(project, name='zeta', url='https://z.git')
-    services.project_add_repo(project, name='alpha', url='https://a.git', is_primary=True)
+    services.project_add_repo(
+        project, name='alpha', url='https://a.git', is_primary=True
+    )
     repos = list(project.repos.all())
     assert repos[0].name == 'alpha'  # primary first
     assert repos[1].name == 'zeta'

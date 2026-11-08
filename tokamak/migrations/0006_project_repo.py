@@ -14,16 +14,63 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='ProjectRepo',
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                (
+                    'id',
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name='ID',
+                    ),
+                ),
                 ('name', models.CharField(max_length=200)),
-                ('url', models.URLField(blank=True, help_text='Git remote URL (canonical source of truth).')),
-                ('path', models.CharField(blank=True, help_text='Local checkout path (relative to workspace or absolute).', max_length=500)),
-                ('kind', models.CharField(choices=[('git', 'Git repo'), ('folder', 'Plain folder')], default='git', max_length=20)),
-                ('branch', models.CharField(blank=True, help_text='Default branch to track (e.g. main, develop).', max_length=200)),
+                (
+                    'url',
+                    models.URLField(
+                        blank=True,
+                        help_text='Git remote URL (canonical source of truth).',
+                    ),
+                ),
+                (
+                    'path',
+                    models.CharField(
+                        blank=True,
+                        help_text='Local checkout path (relative to workspace or absolute).',
+                        max_length=500,
+                    ),
+                ),
+                (
+                    'kind',
+                    models.CharField(
+                        choices=[('git', 'Git repo'), ('folder', 'Plain folder')],
+                        default='git',
+                        max_length=20,
+                    ),
+                ),
+                (
+                    'branch',
+                    models.CharField(
+                        blank=True,
+                        help_text='Default branch to track (e.g. main, develop).',
+                        max_length=200,
+                    ),
+                ),
                 ('description', models.TextField(blank=True)),
-                ('is_primary', models.BooleanField(default=False, help_text='The main codebase for this project.')),
+                (
+                    'is_primary',
+                    models.BooleanField(
+                        default=False, help_text='The main codebase for this project.'
+                    ),
+                ),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('project', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='repos', to='tokamak.project')),
+                (
+                    'project',
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name='repos',
+                        to='tokamak.project',
+                    ),
+                ),
             ],
             options={
                 'ordering': ['-is_primary', 'name'],

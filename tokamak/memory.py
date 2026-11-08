@@ -7,20 +7,20 @@ a deterministic three-phase eviction engine enforces the budget, offloading
 This module lets tokamak act as a *memory producer*: ticket/project signals
 (and replayable EventLog history) are fed into per-project memory sessions so
 an LLM agent working on this repo can recall what happened on the board
-without re-reading every event row. It is entirely optional — the package is
+without re-reading every event row. It is entirely optional - the package is
 imported lazily and the bridge is OFF unless ``settings.TOKAMAK_MEMORY``
 
 
-* ``local``   — embeds :class:`clm_mem.MemoryHarness` in-process with any
+* ``local``   - embeds :class:`clm_mem.MemoryHarness` in-process with any
   OpenAI-compatible backend (``StubChat`` works fully offline; tests use it).
-* ``served``  — attaches a :class:`clm_mem.RemoteHarness` to a running
+* ``served``  - attaches a :class:`clm_mem.RemoteHarness` to a running
   ``clm-mem serve`` proxy, so swarm agents sharing a server share one live
 
 Served mode speaks the **explicit session API** (clm-mem branch
 ``spike/session-api``, see clm-mem/docs/library-migration.md): memory is no
 longer a header side effect of ``/v1/chat/completions``. A memory session is
-a *branch* that you open deliberately —
-``POST /v1/clm/sessions {"session": "ws:<name>", "options": {...}}`` — and
+a *branch* that you open deliberately -
+``POST /v1/clm/sessions {"session": "ws:<name>", "options": {...}}`` - and
 converse with through ``POST /v1/clm/sessions/<id>/turns``. The bridge opens
 branches eagerly at :func:`open_session` (fail fast at connect time, so
 creation-time budget knobs actually reach the server), keeps them in the
@@ -28,7 +28,7 @@ process cache, and drops them deliberately via
 
 
 * Session sandboxes live under ``<TOKAMAK_MEMORY['workdir']>/projects/<pk>``
-  — inside YOUR worktree, so each agent workspace owns its memory files; they
+  - inside YOUR worktree, so each agent workspace owns its memory files; they
   are gitignored, never merged. Agents coordinate via git notes instead;
   the served mode is what makes memory cross-workspace when a team shares
 
@@ -64,7 +64,7 @@ DEFAULTS: Dict = {
 EVENT_TAGS: Dict[str, str] = {
     'project.updated': 'longterm',
     'ticket.created': 'longterm',
-    # Deletion facts outlive eviction — they are the reason a subject is gone.
+    # Deletion facts outlive eviction - they are the reason a subject is gone.
     'ticket.deleted': 'longterm',
     'project.deleted': 'longterm',
     'ticket.updated': 'shortterm',
@@ -145,7 +145,7 @@ def remote_ingest(harness, text: str):
 
     A turn on a branch that vanished server-side (daemon restart drops the
     live window) is a 409 through the SDK's RuntimeError: reopen once and
-    retry — an *open* branch, never an implicit-creation surprise."""
+    retry - an *open* branch, never an implicit-creation surprise."""
     try:
         return harness.turn(text)
     except UnknownSession as exc:
@@ -216,7 +216,7 @@ def close_session(project_id: Optional[int] = None) -> None:
 def drop_session(project_id: int) -> bool:
 
     Branches are visible server-side (``GET /v1/clm/sessions``, ``/health``)
-    and persist until dropped — be a good citizen instead of leaving the
+    and persist until dropped - be a good citizen instead of leaving the
     daemon holding memory nobody owns. The SDK ships no ``drop()``, so the
     bridge mirrors its DELETE verb directly; local harnesses have no
     server-side lifecycle, so this just releases the cached instance."""
@@ -385,12 +385,12 @@ def ticket_harness(ticket):
     _TICKET_SESSIONS[tid] = harness
 def close_ticket_harness(ticket_id: int) -> None:
     """Release a cached ticket harness. Served branches stay open on the
-    daemon until :func:`drop_ticket_branch` — closing the cache entry is
+    daemon until :func:`drop_ticket_branch` - closing the cache entry is
     not the end of a branch's server-side lifecycle."""
 def drop_ticket_branch(ticket_id: int) -> bool:
     """DELETE /v1/clm/sessions/<id>: end-of-lifecycle cleanup for a served
     ticket branch (be a good citizen; branches are visible in /health).
-    Local harnesses have no server-side lifecycle — cache release only."""
+    Local harnesses have no server-side lifecycle - cache release only."""
     tid = int(ticket_id)
     harness = _TICKET_SESSIONS.pop(tid, None)
     if harness is None:
@@ -473,7 +473,7 @@ def seed_from_archive(harness, query: str = '', limit: int = 8) -> int:
 
     Local harnesses admit them directly as shortterm blocks. Served branches
     get the same effect through an explicit application-level copy (plan
-    rule 6: isolation is structural — there is no broadcast semantics):
+    rule 6: isolation is structural - there is no broadcast semantics):
     each archived fact is replayed as an ingest turn so the server-side
     classifier re-tags it inside this branch.
     """

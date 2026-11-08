@@ -251,7 +251,9 @@ def project_add_repo(
         raise ValidationError({'kind': "Must be 'git' or 'folder'."})
     exists = ProjectRepo.objects.filter(project=project, name=name).exists()
     if exists:
-        raise ValidationError({'name': f'Repo "{name}" already attached to this project.'})
+        raise ValidationError(
+            {'name': f'Repo "{name}" already attached to this project.'}
+        )
     repo = ProjectRepo.objects.create(
         project=project,
         name=name,

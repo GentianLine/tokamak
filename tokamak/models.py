@@ -326,9 +326,7 @@ class ProjectRepo(models.Model):
         GIT = 'git', 'Git repo'
         FOLDER = 'folder', 'Plain folder'
 
-    project = models.ForeignKey(
-        Project, on_delete=models.CASCADE, related_name='repos'
-    )
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='repos')
     name = models.CharField(max_length=200)
     url = models.URLField(
         blank=True,
@@ -339,9 +337,7 @@ class ProjectRepo(models.Model):
         blank=True,
         help_text='Local checkout path (relative to workspace or absolute).',
     )
-    kind = models.CharField(
-        max_length=20, choices=Kind.choices, default=Kind.GIT
-    )
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.GIT)
     branch = models.CharField(
         max_length=200,
         blank=True,
