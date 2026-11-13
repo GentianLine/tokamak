@@ -141,8 +141,11 @@ def is_enabled() -> bool:
 
 
 def clm_mem_available() -> bool:
+    """True when the memory package (``shatterling``, formerly ``clm_mem``) is
+    importable. The name is kept for API stability; only the underlying package
+    was renamed."""
     try:
-        import clm_mem  # noqa: F401
+        import shatterling  # noqa: F401
     except ImportError:
         return False
     return True
@@ -173,7 +176,7 @@ def _open_remote(harness, options: Optional[Dict] = None):
 
 def _serve_remote(cfg: Dict, session: str):
     """Build *and open* a served RemoteHarness (options ride on open())."""
-    from clm_mem import RemoteHarness
+    from shatterling import RemoteHarness
 
     harness = RemoteHarness(
         cfg['backend_base_url'],
@@ -228,7 +231,7 @@ def open_session(project_id: int):
     if project_id in _SESSIONS:
         return _SESSIONS[project_id]
 
-    from clm_mem import HarnessConfig, MemoryHarness, RemoteHarness, StubChat
+    from shatterling import HarnessConfig, MemoryHarness, RemoteHarness, StubChat
 
     if cfg['mode'] == 'local':
         hcfg = HarnessConfig(
@@ -241,7 +244,7 @@ def open_session(project_id: int):
         if cfg.get('tokenize'):
             hcfg.tokenizer_name = cfg.get('tokenizer_name', '')
         if cfg.get('backend_base_url') and cfg.get('backend_model'):
-            from clm_mem import OpenAIChat
+            from shatterling import OpenAIChat
 
             llm = OpenAIChat(
                 cfg['backend_base_url'],
@@ -456,7 +459,7 @@ def ticket_harness(ticket):
         raise MemoryUnavailable('Tokamak memory bridge is disabled')
     if not clm_mem_available():
         raise MemoryUnavailable('clm-mem is not installed (pip install clm-mem)')
-    from clm_mem import HarnessConfig, MemoryHarness
+    from shatterling import HarnessConfig, MemoryHarness
 
     cfg = get_config()
     tid = ticket.id if hasattr(ticket, 'id') else int(ticket)
@@ -472,7 +475,7 @@ def ticket_harness(ticket):
             classify_mode='post',
         )
         if cfg.get('backend_base_url') and cfg.get('backend_model'):
-            from clm_mem import OpenAIChat
+            from shatterling import OpenAIChat
 
             llm = OpenAIChat(
                 cfg['backend_base_url'],
@@ -480,7 +483,7 @@ def ticket_harness(ticket):
                 api_key=cfg.get('api_key', 'EMPTY'),
             )
         else:
-            from clm_mem import StubChat
+            from shatterling import StubChat
 
             llm = StubChat()
         harness = MemoryHarness(llm, hcfg)
