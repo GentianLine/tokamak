@@ -27,7 +27,7 @@ from rest_framework.test import APIClient
 
 from tokamak import memory
 from tokamak.models import EventLog
-from tests._utils import make_project
+from tests._utils import make_authed_client, make_project
 
 
 def _contract_available():
@@ -197,7 +197,7 @@ def test_status_snapshot_no_polling_side_channel(sup, db, tmp_path):
 
 def test_note_endpoint_served_writes_and_reports_block(sup, db, tmp_path):
     project = make_project('SrvF')
-    client = APIClient()
+    client = make_authed_client()
     with served_cfg(sup, tmp_path):
         r = client.post(
             '/api/memory/note/',

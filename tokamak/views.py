@@ -26,10 +26,30 @@ Routes (mounted under /api/ in tokamak/api_urls.py):
             GET  /events/?project=<id>&name=ticket.state_changed
 """
 
+import logging
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import routers, serializers, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
+
+
+def _error_response(exc):
+    """Map an exception from a ticket/blocker action to a safe response (L-4).
+
+    Domain/validation errors are 400 with the operator-facing message; anything
+    unexpected is logged and returned as a generic 500 so internal exception
+    text (paths, SQL, etc.) never leaks to the client.
+    """
+    if isinstance(exc, (DjangoValidationError, serializers.ValidationError)):
+        return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    logger.exception('tokamak API action failed: %s', exc)
+    return Response(
+        {'detail': 'Unexpected error while processing this request.'},
+        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
 
 from . import services
 from .blockers_api import register_blocker_routes
@@ -265,7 +285,7 @@ class TicketViewSet(viewsets.ModelViewSet):
                 self.get_object(), new_state, user=self._user(request)
             )
         except Exception as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return _error_response(exc)
         return Response(TicketSerializer(ticket).data)
 
     @transition.mapping.get
@@ -287,17 +307,27 @@ class TicketViewSet(viewsets.ModelViewSet):
             points = request.data.get('points')
             ticket = services.estimate_ticket(self.get_object(), points)
         except Exception as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return _error_response(exc)
         return Response(TicketSerializer(ticket).data)
 
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
         try:
-            ticket = services.assign_iteration(
-                self.get_object(), request.data.get('iteration')
+            iteration_id = request.data.get('iteration')
+            # The service layer expects an Iteration instance (or None to
+            # unassign); the REST payload carries a primary key. Resolve it so
+            # cross-project / unknown ids surface as a 400 ValidationError
+            # rather than an AttributeError from attribute access on an int.
+            iteration = (
+                Iteration.objects.filter(pk=iteration_id).first()
+                if iteration_id is not None
+                else None
             )
+            if iteration_id is not None and iteration is None:
+                raise DjangoValidationError({'iteration': 'Iteration not found.'})
+            ticket = services.assign_iteration(self.get_object(), iteration)
         except Exception as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return _error_response(exc)
         return Response(TicketSerializer(ticket).data)
 
 

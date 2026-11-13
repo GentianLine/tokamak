@@ -142,7 +142,10 @@ def test_fanout_covers_ticket_deleted(db, monkeypatch):
     tokamak_cfg = dict(settings.TOKAMAK)
     tokamak_cfg['WEBHOOKS'] = {
         'enabled': True,
-        'targets': [{'url': 'http://example.invalid/hook'}],
+        'targets': [{'url': 'http://example.invalid/hook', 'allow_private': True}],
+        # Run delivery inline so the mocked _deliver is exercised synchronously
+        # and we can assert on its returned record (async would return 'queued').
+        'async': False,
     }
     with override_settings(TOKAMAK=tokamak_cfg):
         project = make_project('Fan del')

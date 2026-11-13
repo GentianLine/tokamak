@@ -20,8 +20,8 @@ only drive that service layer.
 
 import json
 
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, QueryDict
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from . import memory as bridge
@@ -34,6 +34,18 @@ def _json_body(request):
         return json.loads(request.body.decode('utf-8') or '{}')
     except ValueError:
         return {}
+
+
+def _safe_int(value, default=None):
+    """Parse a numeric query/body value; return ``default`` on bad input (T-7).
+
+    A non-numeric id must answer 400, never crash into an unhandled ValueError
+    and surface as a 500.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _serialize(sess):
@@ -69,14 +81,15 @@ def session_list(request):
     tid = qd.get('ticket')
     if not tid:
         return JsonResponse({'error': 'ticket required', **out}, status=400)
-    qs = MemorySession.objects.filter(ticket_id=int(tid))
+    ticket_id = _safe_int(tid)
+    if ticket_id is None:
+        return JsonResponse({'error': 'ticket must be an integer', **out}, status=400)
+    qs = MemorySession.objects.filter(ticket_id=ticket_id)
     status = qd.get('status')
     if status:
         qs = qs.filter(status=status)
-    latest = (
-        services.latest_session_summary(Ticket.objects.filter(pk=int(tid)).first())
-        if tid
-        else None
+    latest = services.latest_session_summary(
+        Ticket.objects.filter(pk=ticket_id).first()
     )
     out.update(
         sessions=[_serialize(s) for s in qs],
@@ -85,7 +98,7 @@ def session_list(request):
     return JsonResponse(out)
 
 
-@csrf_exempt
+@login_required
 @require_POST
 def session_open(request):
     """POST /sessions/open/ {"ticket": <id>} — manual session open."""
@@ -104,7 +117,7 @@ def session_open(request):
     return JsonResponse({'session': _serialize(sess)}, status=201 if sess else 200)
 
 
-@csrf_exempt
+@login_required
 @require_POST
 def session_close(request, pk=None):
     """POST /sessions/<pk>/close/ {"reason": ..., "summary": ...}."""

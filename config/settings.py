@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -19,17 +20,38 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-roc4k6*3s$3tmcnkp$)h2)q2j@=)@4+d2oki%m-i6+zu5t90d='
+# SECURITY (T-2): the secret key must come from the environment and never be
+# committed. Fail fast if it is missing in a real deployment; fall back to an
+# insecure-but-obvious value ONLY when DEBUG is on so local dev keeps working.
+_SECRET_KEY_ENV = 'DJANGO_SECRET_KEY'
+if os.environ.get(_SECRET_KEY_ENV):
+    SECRET_KEY = os.environ[_SECRET_KEY_ENV]
+else:
+    # Development fallback only. Refused below if we are not in DEBUG mode.
+    SECRET_KEY = 'django-insecure-dev-only-do-not-use-in-production-0000'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# SECURITY (T-2): DEBUG is an environment decision, never hardcoded True as the
+# effective production value. Default off; set DJANGO_DEBUG=1 for local dev.
+DEBUG = os.environ.get('DJANGO_DEBUG', '').strip().lower() in ('1', 'true', 'yes', 'on')
 
-# Sample/demo posture: accept any Host so the app is reachable from LAN
-# adapters, port-forwarded tunnels and reverse proxies without per-env
-# edits. The deployed app will supply its own settings module; this file
-# is not the production surface.
-ALLOWED_HOSTS = ['*']
+if not os.environ.get(_SECRET_KEY_ENV) and not DEBUG:
+    raise RuntimeError(
+        f"{_SECRET_KEY_ENV} must be set when DEBUG is off. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(50))\""
+    )
+
+# SECURITY (T-2): ALLOWED_HOSTS comes from the environment (comma-separated).
+# The old hardcoded ['*'] disabled host validation. In DEBUG we accept the
+# local dev hosts so `runserver` works; otherwise require an explicit list.
+_allowed_hosts_raw = os.environ.get('DJANGO_ALLOWED_HOSTS', '').strip()
+if _allowed_hosts_raw:
+    ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_raw.split(',') if h.strip()]
+elif DEBUG:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
+else:
+    raise RuntimeError(
+        "DJANGO_ALLOWED_HOSTS must be set (comma-separated) when DEBUG is off."
+    )
 
 
 # Application definition
@@ -43,6 +65,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django_unicorn',
     'rest_framework',
+    # SECURITY (T-1): DRF token auth for non-browser API clients. The app
+    # provides the Token model + migrations that back TokenAuthentication.
+    'rest_framework.authtoken',
     'tokamak',
 ]
 
@@ -132,8 +157,16 @@ UNICORN = {
 }
 
 REST_FRAMEWORK = {
+    # SECURITY (T-1): require authentication on every API call. Session auth
+    # covers the browser (and enforces CSRF for it); token auth covers non-
+    # browser automation clients (e.g. the clm-mem bridge / scripts).
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    # SECURITY (T-1): no anonymous access to any API route by default.
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,

@@ -10,8 +10,8 @@ component calls, so UI drags and automation produce identical writes and
 audit rows.
 """
 
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from .models import Ticket
@@ -27,7 +27,7 @@ def _json_body(request):
         return {}
 
 
-@csrf_exempt
+@login_required
 @require_POST
 def reorder_ticket_view(request):
     """Persist a manual ordering move; errors answer 400 like the API style."""

@@ -15,7 +15,7 @@ from rest_framework.test import APIClient
 from tokamak import memory as bridge
 from tokamak import services
 from tokamak.models import EventLog, MemorySession
-from tests._utils import make_project
+from tests._utils import make_authed_client, make_project
 
 
 @pytest.fixture(autouse=True)
@@ -188,7 +188,7 @@ def test_monitor_url_served_mode(db, tmp_path):
 
 
 def test_rest_gate_reports_disabled(db):
-    client = APIClient()
+    client = make_authed_client()
     # list still answers (gate flags + empty list); open is refused
     r = client.get('/api/sessions/?ticket=1')
     assert r.status_code == 200 and r.json()['enabled'] is False
@@ -200,7 +200,7 @@ def test_rest_gate_reports_disabled(db):
 def test_rest_round_trip(db, tmp_path):
     project = make_project('RestS')
     t = make_ticket(project, 'RESTed')
-    client = APIClient()
+    client = make_authed_client()
     with sess_cfg(tmp_path):
         r = client.post('/api/sessions/open/', data={'ticket': t.id}, format='json')
         assert r.status_code == 201
@@ -239,7 +239,7 @@ def test_rest_round_trip(db, tmp_path):
 
 
 def test_rest_open_missing_ticket(db, tmp_path):
-    client = APIClient()
+    client = make_authed_client()
     with sess_cfg(tmp_path):
         r = client.post('/api/sessions/open/', data={}, format='json')
         assert r.status_code == 400

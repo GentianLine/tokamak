@@ -18,8 +18,8 @@ disabled in production until that lands.
 
 import json
 
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, QueryDict
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from . import memory
@@ -52,7 +52,7 @@ def memory_status(request):
     return JsonResponse(out)
 
 
-@csrf_exempt
+@login_required
 @require_POST
 def memory_recall(request):
     """POST /memory/recall/ — search; optionally reinject an archived block."""
@@ -72,7 +72,7 @@ def memory_recall(request):
         return JsonResponse({'error': str(exc)}, status=400)
 
 
-@csrf_exempt
+@login_required
 @require_POST
 def memory_note(request):
     """POST /memory/note/ — inject a durable longterm block into a session.

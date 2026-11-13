@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 from tokamak import memory
 from tokamak.automation import mirror_to_memory
 from tokamak.models import EventLog, Ticket
-from tests._utils import make_project
+from tests._utils import make_authed_client, make_project
 
 
 @pytest.fixture(autouse=True)
@@ -99,7 +99,7 @@ def test_remember_event_tags_and_mirrors_files(db, tmp_path):
 
 def test_note_endpoint_writes_longterm_block(db, tmp_path):
     project = make_project('MemB')
-    client = APIClient()
+    client = make_authed_client()
     with mem_cfg(tmp_path):
         r = client.post(
             '/api/memory/note/',
@@ -229,7 +229,7 @@ def test_memory_recall_cli(db, tmp_path):
 
 
 def test_status_endpoint_reports_bridge(db):
-    client = APIClient()
+    client = make_authed_client()
     r = client.get('/api/memory/status/')
     assert r.status_code == 200
     body = r.json()
@@ -238,7 +238,7 @@ def test_status_endpoint_reports_bridge(db):
 
 def test_status_with_snapshot(db, tmp_path):
     project = make_project('RestA')
-    client = APIClient()
+    client = make_authed_client()
     with mem_cfg(tmp_path):
         memory.remember_event(
             EventLog.objects.create(
@@ -251,7 +251,7 @@ def test_status_with_snapshot(db, tmp_path):
 
 def test_recall_endpoint_round_trip(db, tmp_path):
     project = make_project('RestB')
-    client = APIClient()
+    client = make_authed_client()
     with mem_cfg(tmp_path):
         memory.remember_event(
             EventLog.objects.create(
@@ -270,7 +270,7 @@ def test_recall_endpoint_round_trip(db, tmp_path):
 
 
 def test_endpoints_reject_when_disabled(db):
-    client = APIClient()
+    client = make_authed_client()
     r = client.post(
         '/api/memory/recall/', data={'project': 1, 'query': 'x'}, format='json'
     )

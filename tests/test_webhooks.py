@@ -70,12 +70,16 @@ def clean_ledger():
 
 
 def hook_cfg(url, **over):
+    # The test server is on loopback; opt the target in to private/loopback
+    # delivery (the secure default refuses it) and run synchronously so tests
+    # can assert on the delivered record without waiting on the thread pool.
     cfg = {
         'enabled': True,
-        'targets': [{'url': url}],
+        'targets': [{'url': url, 'allow_private': True}],
         'timeout': 2.0,
         'max_retries': 3,
         'retry_backoff': 0.01,
+        'async': False,
     }
     cfg.update(over)
     return override_settings(TOKAMAK={'WEBHOOKS': cfg})
@@ -149,13 +153,7 @@ def test_disabled_config_ignores_events(db, server):
 @pytest.mark.django_db
 def test_fanout_mirrors_audit_rows(db, server):
     """Enabled fan-out mirrors service-layer events to the target."""
-    cfg = {
-        'enabled': True,
-        'targets': [{'url': server}],
-        'timeout': 2.0,
-        'retry_backoff': 0.01,
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    with hook_cfg(server):
         webhooks.register_fanout()
         project = make_project('Hooked proj')
         ticket = services.create_ticket(project, name='Hook story')
@@ -173,13 +171,7 @@ def test_fanout_mirrors_audit_rows(db, server):
 @pytest.mark.django_db
 def test_fanout_carries_payload_and_delivery_id(db, server):
     """The envelope has a stable delivery id and the audit payload mirrored."""
-    cfg = {
-        'enabled': True,
-        'targets': [{'url': server}],
-        'timeout': 2.0,
-        'retry_backoff': 0.01,
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    with hook_cfg(server):
         webhooks.register_fanout()
         project = make_project('Envelope proj')
         ticket = services.create_ticket(project, name='Envelope story')
@@ -206,15 +198,10 @@ def test_fanout_carries_payload_and_delivery_id(db, server):
 @pytest.mark.django_db
 def test_event_filter_patterns(db, server):
     """Targets with event patterns receive only matching audit rows."""
-    cfg = {
-        'enabled': True,
-        'targets': [
-            {'url': server, 'events': ['project.*']},
-        ],
-        'timeout': 2.0,
-        'retry_backoff': 0.01,
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    with hook_cfg(
+        server,
+        targets=[{'url': server, 'events': ['project.*'], 'allow_private': True}],
+    ):
         webhooks.register_fanout()
         project = services.create_project('Filtered proj')  # audit: project.updated
         services.create_ticket(project, name='Not matched')
@@ -237,13 +224,7 @@ def test_event_filter_patterns(db, server):
 @pytest.mark.django_db
 def test_idempotent_within_process(db, server):
     """Re-delivering the same event to a target is skipped (idempotent)."""
-    cfg = {
-        'enabled': True,
-        'targets': [{'url': server}],
-        'timeout': 2.0,
-        'retry_backoff': 0.01,
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    with hook_cfg(server):
         event = EventLog.objects.create(name='ticket.created', payload={})
         first = fanout_for_event(event)
         second = fanout_for_event(event)
@@ -257,13 +238,7 @@ def test_idempotent_within_process(db, server):
 @pytest.mark.django_db
 def test_delivery_id_stable_across_calls(db, server):
     """The delivery id is deterministic from the event pk (targets dedupe)."""
-    cfg = {
-        'enabled': True,
-        'targets': [{'url': server}],
-        'timeout': 2.0,
-        'retry_backoff': 0.01,
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    with hook_cfg(server):
         event = EventLog.objects.create(name='ticket.created', payload={})
         ids = []
         for _ in range(3):
@@ -282,14 +257,7 @@ def test_delivery_id_stable_across_calls(db, server):
 def test_retry_succeeds_after_transient_failure(db, server):
     """A first-response failure is retried until it sticks."""
     _Handler.fail_count = 1
-    cfg = {
-        'enabled': True,
-        'targets': [{'url': server}],
-        'timeout': 2.0,
-        'max_retries': 3,
-        'retry_backoff': 0.01,
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    with hook_cfg(server):
         event = EventLog.objects.create(name='ticket.created', payload={})
         result = fanout_for_event(event)
 
@@ -300,14 +268,9 @@ def test_retry_succeeds_after_transient_failure(db, server):
 @pytest.mark.django_db
 def test_failure_after_max_retries(db):
     """An unreachable endpoint fails gracefully (logged, never raises)."""
-    cfg = {
-        'enabled': True,
-        'targets': [{'url': 'http://127.0.0.1:1/hook'}],
-        'timeout': 0.5,
-        'max_retries': 2,
-        'retry_backoff': 0.01,
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    # Loopback target: opt in to private delivery so the SSRF guard lets it
+    # through and we exercise the real retry/failure path (not a skip).
+    with hook_cfg('http://127.0.0.1:1/hook', timeout=0.5, max_retries=2):
         event = EventLog.objects.create(name='ticket.created', payload={})
         result = fanout_for_event(event)
 
@@ -318,14 +281,7 @@ def test_failure_after_max_retries(db):
 @pytest.mark.django_db
 def test_signing_secret_header(db, server):
     """A signing secret produces an HMAC header on every delivery."""
-    cfg = {
-        'enabled': True,
-        'targets': [{'url': server}],
-        'timeout': 2.0,
-        'retry_backoff': 0.01,
-        'signing_secret': 'topsecret',
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    with hook_cfg(server, signing_secret='topsecret'):
         event = EventLog.objects.create(name='ticket.created', payload={})
         fanout_for_event(event)
 
@@ -336,13 +292,7 @@ def test_signing_secret_header(db, server):
 @pytest.mark.django_db
 def test_never_writes_audit_trail(db, server):
     """Fan-out reads EventLog but never appends to it."""
-    cfg = {
-        'enabled': True,
-        'targets': [{'url': server}],
-        'timeout': 2.0,
-        'retry_backoff': 0.01,
-    }
-    with override_settings(TOKAMAK={'WEBHOOKS': cfg}):
+    with hook_cfg(server):
         webhooks.register_fanout()
         project = make_project('Immutable proj')
         services.create_ticket(project, name='Audit safe')
