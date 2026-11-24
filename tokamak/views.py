@@ -51,6 +51,7 @@ def _error_response(exc):
         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
     )
 
+
 from . import services
 from .blockers_api import register_blocker_routes
 from .models import Blocker, EventLog, Iteration, Project, Ticket

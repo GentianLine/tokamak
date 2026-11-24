@@ -177,8 +177,12 @@ def _validate_target_url(url: str, allow_private: bool = False):
         if ip.version == 6 and getattr(ip, 'ipv4_mapped', None) is not None:
             ip = ip.ipv4_mapped
         if (
-            ip.is_loopback or ip.is_private or ip.is_link_local
-            or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+            ip.is_loopback
+            or ip.is_private
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
         ):
             if allow_private:
                 continue
@@ -331,7 +335,9 @@ def _deliver_and_record(cfg: Dict, target: Dict, event, key):
     try:
         record = _deliver(cfg, target, event)
     except Exception as exc:  # receivers must never raise
-        logger.warning('tokamak.webhooks: delivery to %s raised: %s', target['url'], exc)
+        logger.warning(
+            'tokamak.webhooks: delivery to %s raised: %s', target['url'], exc
+        )
         record = {'url': target['url'], 'status': 'failed', 'error': str(exc)}
     with _LOCK:
         _DELIVERED[key] = record
@@ -342,7 +348,9 @@ def _deliver(cfg: Dict, target: Dict, event):
 
     Runs on the webhook thread pool (never the request thread) and refuses to
     touch non-http(s) or restricted-address targets (T-4)."""
-    err = _validate_target_url(target['url'], allow_private=bool(target.get('allow_private')))
+    err = _validate_target_url(
+        target['url'], allow_private=bool(target.get('allow_private'))
+    )
     if err:
         logger.warning('tokamak.webhooks: skipping target %s: %s', target['url'], err)
         return {'url': target['url'], 'status': 'skipped', 'reason': err}

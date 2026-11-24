@@ -57,7 +57,7 @@ def test_disabled_bridge_raises_and_never_bites(db):
 def test_missing_dependency_message(db, tmp_path):
     cfg = {'enabled': True, 'mode': 'local', 'workdir': str(tmp_path)}
     with override_settings(TOKAMAK_MEMORY=cfg):
-        import clm_mem  # noqa: F401  (available here; just ensure no crash)
+        import shatterling  # noqa: F401  (available here; just ensure no crash)
 
         h = memory.open_session(7)
         assert type(h).__name__ == 'MemoryHarness'

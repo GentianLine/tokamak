@@ -230,18 +230,40 @@ def register_receivers():
     )
 
     # -- audit (connect last so automation tweaks are captured) --------------
-    ticket_state_changed.connect(log_ticket_state, dispatch_uid='log_ticket_state')
-    ticket_estimated.connect(log_ticket_estimated, dispatch_uid='log_ticket_estimated')
-    blocker_added.connect(log_blocker_added, dispatch_uid='log_blocker_added')
-    blocker_removed.connect(log_blocker_removed, dispatch_uid='log_blocker_removed')
-    ticket_iteration_changed.connect(
-        log_ticket_iteration, dispatch_uid='log_ticket_iteration'
+    # weak=False is required: these receivers are closures local to this
+    # function, and Django holds signal receivers with weak references by
+    # default. Without it the closures are garbage-collected as soon as
+    # register_receivers() returns and no audit rows are ever written.
+    ticket_state_changed.connect(
+        log_ticket_state, dispatch_uid='log_ticket_state', weak=False
     )
-    ticket_created.connect(log_ticket_created, dispatch_uid='log_ticket_created')
-    ticket_updated.connect(log_ticket_updated, dispatch_uid='log_ticket_updated')
-    ticket_deleted.connect(log_ticket_deleted, dispatch_uid='log_ticket_deleted')
-    project_deleted.connect(log_project_deleted, dispatch_uid='log_project_deleted')
-    project_updated.connect(log_project_updated, dispatch_uid='log_project_updated')
+    ticket_estimated.connect(
+        log_ticket_estimated, dispatch_uid='log_ticket_estimated', weak=False
+    )
+    blocker_added.connect(
+        log_blocker_added, dispatch_uid='log_blocker_added', weak=False
+    )
+    blocker_removed.connect(
+        log_blocker_removed, dispatch_uid='log_blocker_removed', weak=False
+    )
+    ticket_iteration_changed.connect(
+        log_ticket_iteration, dispatch_uid='log_ticket_iteration', weak=False
+    )
+    ticket_created.connect(
+        log_ticket_created, dispatch_uid='log_ticket_created', weak=False
+    )
+    ticket_updated.connect(
+        log_ticket_updated, dispatch_uid='log_ticket_updated', weak=False
+    )
+    ticket_deleted.connect(
+        log_ticket_deleted, dispatch_uid='log_ticket_deleted', weak=False
+    )
+    project_deleted.connect(
+        log_project_deleted, dispatch_uid='log_project_deleted', weak=False
+    )
+    project_updated.connect(
+        log_project_updated, dispatch_uid='log_project_updated', weak=False
+    )
 
     # -- live clm-mem mirror (opt-in; receiver no-ops unless TOKAMAK_MEMORY
     #    says mirror='live', so connecting unconditionally is safe) ----------
@@ -350,14 +372,20 @@ def register_receivers():
             )
         )
 
-    ticket_state_changed.connect(live_mirror_state, dispatch_uid='live_mirror_state')
+    # weak=False for the same reason as the audit receivers above: these are
+    # closures and would be collected once register_receivers() returns.
+    ticket_state_changed.connect(
+        live_mirror_state, dispatch_uid='live_mirror_state', weak=False
+    )
     ticket_estimated.connect(
-        live_mirror_estimated, dispatch_uid='live_mirror_estimated'
+        live_mirror_estimated, dispatch_uid='live_mirror_estimated', weak=False
     )
     ticket_iteration_changed.connect(
-        live_mirror_iteration, dispatch_uid='live_mirror_iteration'
+        live_mirror_iteration, dispatch_uid='live_mirror_iteration', weak=False
     )
-    ticket_created.connect(live_mirror_created, dispatch_uid='live_mirror_created')
+    ticket_created.connect(
+        live_mirror_created, dispatch_uid='live_mirror_created', weak=False
+    )
 
     def live_mirror_project_deleted(sender, project, user=None, **kwargs):
         from . import automation
@@ -375,10 +403,17 @@ def register_receivers():
             )
         )
 
-    ticket_updated.connect(live_mirror_updated, dispatch_uid='live_mirror_updated')
-    ticket_deleted.connect(live_mirror_deleted, dispatch_uid='live_mirror_deleted')
+    ticket_updated.connect(
+        live_mirror_updated, dispatch_uid='live_mirror_updated', weak=False
+    )
+    ticket_deleted.connect(
+        live_mirror_deleted, dispatch_uid='live_mirror_deleted', weak=False
+    )
     project_deleted.connect(
         live_mirror_project_deleted,
         dispatch_uid='live_mirror_project_deleted',
+        weak=False,
     )
-    project_updated.connect(live_mirror_project, dispatch_uid='live_mirror_project')
+    project_updated.connect(
+        live_mirror_project, dispatch_uid='live_mirror_project', weak=False
+    )

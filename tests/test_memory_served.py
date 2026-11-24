@@ -33,7 +33,7 @@ from tests._utils import make_authed_client, make_project
 def _contract_available():
     """True when the installed clm-mem speaks open()/turn() (session-api)."""
     try:
-        from clm_mem import RemoteHarness
+        from shatterling import RemoteHarness
 
         return hasattr(RemoteHarness, 'open') and hasattr(RemoteHarness, 'turn')
     except ImportError:
@@ -47,7 +47,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope='module')
 def sup():
-    from clm_mem import start_supervisor
+    from shatterling import start_supervisor
 
     s = start_supervisor(
         public_port=0,
