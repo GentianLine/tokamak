@@ -2,6 +2,7 @@ from django.urls import path
 
 from .memory_views import memory_note, memory_recall, memory_status
 from .reorder_views import reorder_ticket_view
+from .tasks_views import task_cancel, task_detail, task_list, task_trigger
 from .sessions_views import (
     session_close,
     session_list,
@@ -24,4 +25,9 @@ urlpatterns = list(router.urls) + [
     path('sessions/<int:pk>/snapshot/', session_snapshot, name='session-snapshot'),
     # drag-reorder within a display group (tokamak/reorder.py)
     path('reorder/', reorder_ticket_view, name='reorder-ticket'),
+    # agentic tasks (tokamak/tasks.py): trigger + monitor autonomous agent runs
+    path('tasks/', task_list, name='task-list'),
+    path('tasks/trigger/', task_trigger, name='task-trigger'),
+    path('tasks/<int:pk>/', task_detail, name='task-detail'),
+    path('tasks/<int:pk>/cancel/', task_cancel, name='task-cancel'),
 ]

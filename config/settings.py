@@ -220,6 +220,25 @@ TOKAMAK_MEMORY = {
 }
 
 
+# --- Agentic tasks ---------------------------------------------------------
+# Autonomous agent execution on tickets (tokamak/tasks.py). Off by default;
+# requires the memory bridge to be enabled for full functionality (project
+# memories in the prompt), but works without it (ticket context + canned
+# prompt only).
+TOKAMAK_TASKS = {
+    'enabled': False,
+    'starting_prompt': (
+        'You are an autonomous agent assigned to work on this ticket. '
+        'Read the context below, explore the attached sources, and begin '
+        'implementing the changes described. Work step by step, verifying '
+        'each change before moving on. When complete, summarize what you did.'
+    ),
+    'max_turns': 20,
+    'timeout_seconds': 300,
+    'thread_pool_size': 4,
+}
+
+
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 

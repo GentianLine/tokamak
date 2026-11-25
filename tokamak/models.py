@@ -361,6 +361,51 @@ class ProjectRepo(models.Model):
         return label
 
 
+class AgenticTask(models.Model):
+    """One autonomous agent execution scoped to a ticket.
+
+    Lifecycle: PENDING -> RUNNING -> COMPLETED | FAILED. A task is triggered
+    by a user (or automation) via the REST API; the runner assembles the
+    prompt, opens a shatterling session, and executes the agent loop.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        RUNNING = 'running', 'Running'
+        COMPLETED = 'completed', 'Completed'
+        FAILED = 'failed', 'Failed'
+
+    ticket = models.ForeignKey(
+        Ticket, on_delete=models.CASCADE, related_name='agentic_tasks'
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name='agentic_tasks'
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    prompt = models.TextField(blank=True)
+    result = models.TextField(blank=True)
+    error = models.TextField(blank=True)
+    session_key = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    payload = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'AgenticTask #{self.id} ({self.status}) ticket={self.ticket_id}'
+
+    @property
+    def duration(self):
+        if self.started_at and self.completed_at:
+            return self.completed_at - self.started_at
+        return None
+
+
 class MemorySession(models.Model):
     """One clm-mem chat/memory session attached to a ticket attempt.
 
